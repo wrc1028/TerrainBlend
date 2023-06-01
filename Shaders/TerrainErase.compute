@@ -1,0 +1,224 @@
+﻿#pragma kernel EraseMask
+#pragma kernel EraseLayer
+#pragma kernel FindIsolatedPoint
+#pragma kernel AppendIsolatedPoint
+#pragma kernel BlurredEraseEdge
+#pragma kernel RawIDMask
+#pragma kernel AlphaNormalize
+// input
+uint3 _TerrainParams;
+#define _LayerCount _TerrainParams.x // 当前地形层的索引
+#define _Resolution _TerrainParams.y // 地形Blend贴图的分辨率
+#define _LayerIndex _TerrainParams.z // 地形Blend贴图的分辨率
+
+Texture2D<float4> _EraseMask;        // R: 多层区域的Mask; G: 两层以上区域的Mask; B: 孤立点Mask
+Texture2D<float> _AlphaTexture;
+Texture2DArray<float> _AlphaTextureArray;
+// result
+RWTexture2D<float4> EraseMaskResult;
+RWTexture2D<float> AlphaTextureResult;
+RWTexture2DArray<float> AlphaTextureArrayResult;
+
+static const int2 _Offset[8] = 
+{
+    int2(-1, 1),  int2(0, 1),  int2(1, 1),
+    int2(-1, 0),               int2(1, 0),
+    int2(-1, -1), int2(0, -1), int2(1, -1), 
+};
+static const int2 _CrossOffset[4] = 
+{
+    int2(0, 1), int2(-1, 0), int2(1, 0), int2(0, -1),
+};
+uint2 GetNearID(uint2 id, uint index)
+{
+    return clamp(id + _Offset[index], 0, _Resolution - 1);
+}
+uint2 GetNeraID(uint2 id, int2 offset)
+{
+    return clamp(id + offset, 0, _Resolution - 1);
+}
+uint2 GetCrossID(uint2 id, uint index)
+{
+    return clamp(id + _CrossOffset[index], 0, _Resolution - 1);
+}
+
+[numthreads(8, 8, 1)]
+void EraseMask (uint3 id : SV_DispatchThreadID)
+{
+    uint validLayerCount = 0;
+    for (uint i = 0; i < _LayerCount; i++)
+    {
+        uint3 texID = uint3(id.xy, i);
+        if (_AlphaTextureArray[texID] > 0)
+            validLayerCount ++;
+    }
+    float resultR = validLayerCount > 3 ? 1 : 0;
+    float resultG = validLayerCount > 2 ? 1 : 0;
+    EraseMaskResult[id.xy] = float4(resultR, resultG, 0, 1);
+}
+
+[numthreads(8, 8, 1)]
+void EraseLayer (uint3 id : SV_DispatchThreadID)
+{
+    if (_EraseMask[id.xy].r == 0)
+    {
+        for (uint j = 0; j < _LayerCount; j++)
+        {
+            uint3 texID = uint3(id.xy, j);
+            AlphaTextureArrayResult[texID] = _AlphaTextureArray[texID];
+        }
+    }
+    else
+    {
+        uint3 retainIds = 0;
+        uint3 texID = 0;
+        float3 alphas = 0;
+        // 按照Alpha值的大小进行排序
+        for (uint k = 0; k < _LayerCount; k++)
+        {
+            texID = uint3(id.xy, k);
+            float alpha = _AlphaTextureArray[texID];
+            if (alpha == 0) continue;
+            if (alpha > alphas.x)
+            {
+                alphas = float3(alpha, alphas.xy);
+                retainIds = uint3(k, retainIds.xy);
+            }
+            else if (alpha > alphas.y)
+            {
+                alphas.yz = float2(alpha, alphas.y);
+                retainIds.yz = uint2(k, retainIds.y);
+            }
+            else if (alpha > alphas.z)
+            {
+                alphas.z = alpha;
+                retainIds.z = k;
+            }
+            else continue;
+        }
+        float alphaSum = dot(1, alphas);
+        for (uint m = 0; m < _LayerCount; m++)
+        {
+            texID = uint3(id.xy, m);
+            if (retainIds.x == m)
+                AlphaTextureArrayResult[texID] = alphas.x / alphaSum;
+            else if (retainIds.y == m)
+                AlphaTextureArrayResult[texID] = alphas.y / alphaSum;
+            else if (retainIds.z == m)
+                AlphaTextureArrayResult[texID] = alphas.z / alphaSum;
+            else
+                AlphaTextureArrayResult[texID] = 0;
+        }
+    }
+}
+
+// 寻找和移除孤立点
+[numthreads(8, 8, 1)]
+void FindIsolatedPoint (uint3 id : SV_DispatchThreadID)
+{
+    float centerAlpha = _AlphaTexture[id.xy];
+    float4 eraseMask = _EraseMask[id.xy];  // rg: 多层结构的Mask; b: 吸附孤立点后剩下的Mask(继承就行)
+    if (eraseMask.r == 1 && centerAlpha > 0)
+    {
+        int zeroAlphaCount = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            if (_AlphaTexture[GetCrossID(id.xy, i)] == 0)
+                zeroAlphaCount ++;
+        }
+        if (zeroAlphaCount == 4)
+        {
+            centerAlpha = 0;
+            eraseMask.b = 1;
+        }
+    }
+    EraseMaskResult[id.xy] = eraseMask;
+    AlphaTextureResult[id.xy] = centerAlpha;
+}
+// 附着孤立点
+[numthreads(8, 8, 1)]
+void AppendIsolatedPoint (uint3 id : SV_DispatchThreadID)
+{
+    uint3 texID = uint3(id.xy, _LayerIndex);
+    float centerAlpha = _AlphaTextureArray[texID];
+    float4 isolatedMask = _EraseMask[id.xy]; // rg: 多层结构的Mask; b: 上一层的孤立点Mask
+    if (isolatedMask.b == 1 && centerAlpha == 0)
+    {
+        int alphaCount = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            uint3 nearTexID = uint3(GetCrossID(id.xy, i), _LayerIndex);
+            if (_AlphaTextureArray[nearTexID] > 0)
+                alphaCount ++;
+        }
+        if (alphaCount > 1)
+        {
+            centerAlpha = _AlphaTexture[id.xy];
+            isolatedMask.b = 0;
+        }
+    }
+    EraseMaskResult[id.xy] = isolatedMask;
+    AlphaTextureResult[id.xy] = centerAlpha;
+}
+
+// 虚化擦除后产生的不连续过渡
+[numthreads(8, 8, 1)]
+void BlurredEraseEdge (uint3 id : SV_DispatchThreadID)
+{
+    float centerAlpha = _AlphaTexture[id.xy];
+    if (centerAlpha > 0)
+    {
+        float minDistance = 1000;
+        for (int j = -5; j < 6; j++)
+        {
+            for (int k = -5; k < 6; k++)
+            {
+                uint2 nearID = GetNeraID(id.xy, int2(j, k));
+                if (_EraseMask[nearID].r == 0) continue;
+                float nearAlpha = _AlphaTexture[nearID];
+                if (nearAlpha == 0)
+                    minDistance = min(minDistance, max(0, sqrt(j * j + k * k) - 0.5));
+            }
+        }
+        if (minDistance != 1000)
+            centerAlpha = centerAlpha * min(1, minDistance * 0.222222);
+    }
+    AlphaTextureResult[id.xy] = centerAlpha;
+}
+
+// 输出RawIDMask
+[numthreads(8, 8, 1)]
+void RawIDMask (uint3 id : SV_DispatchThreadID)
+{
+    float centerAlpha = _AlphaTexture[id.xy];
+    bool signID = centerAlpha > 0;
+    bool singleLayer = centerAlpha == 1;
+    if (_EraseMask[id.xy].g == 0)
+    {
+        for (uint j = 0; j < 8; j++)
+        {
+            float nearAlpha = _AlphaTexture[GetNearID(id.xy, j)];
+            if (!signID && nearAlpha > 0.04)
+                signID = true;
+            if (singleLayer && (centerAlpha - nearAlpha > 0.8))
+                singleLayer = false;
+        }
+    }
+    EraseMaskResult[id.xy] = float4(signID ? 1 : 0, singleLayer ? 1 : 0, 0, 1);
+}
+
+// 归一化 
+[numthreads(8, 8, 1)]
+void AlphaNormalize (uint3 id : SV_DispatchThreadID)
+{
+    float alphaSum = 0;
+    for (int i = 0; i < _LayerCount; i++)
+    {
+        alphaSum += _AlphaTextureArray[uint3(id.xy, i)];
+    }
+    for (int j = 0; j < _LayerCount; j++)
+    {
+        uint3 texID = uint3(id.xy, j);
+        AlphaTextureArrayResult[texID] = _AlphaTextureArray[texID] / max(0.5, alphaSum);
+    }
+}

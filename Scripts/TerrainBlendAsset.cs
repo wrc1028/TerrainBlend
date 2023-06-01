@@ -13,8 +13,10 @@ namespace TerrainBlend16
         // public Texture2D m_MSOMap;
 
         // 用于混合的贴图
+        public Texture2D m_OriginAlpha;
+        public Texture2D m_AutoEraseAlpha;
+        public Texture2D m_EraseAlpha;
         public Texture2D m_RawIDMask;
-        public Texture2D m_AlphaTexture;
         public float m_Coverage;
         public float m_Occupancy;
 
@@ -41,8 +43,10 @@ namespace TerrainBlend16
         // public Texture2DArray m_AlbedoArray;
         // public Texture2DArray m_NormalArray;
         public Texture2DArray m_RawIDMaskArray;
+        public Texture2DArray m_OriginAlphaArray;
         public Texture2DArray m_AlphaTextureArray;
         private List<string> m_RawIDMaskPaths;
+        private List<string> m_OriginAlphaPaths;
         private List<string> m_AlphaTexturePaths;
         
         public TerrainBlendAsset(TerrainData terrainData)
@@ -50,7 +54,9 @@ namespace TerrainBlend16
             m_TerrainData = terrainData;
             InitTerrainBlendAsset();
         }
-
+        /// <summary>
+        /// 初始化地形文件
+        /// </summary>
         public void InitTerrainBlendAsset()
         {
             m_TerrainName = m_TerrainData.name;
@@ -61,16 +67,14 @@ namespace TerrainBlend16
             m_OccupancyIndexRank = new int[m_LayersCount];
 
             m_TerrainLayers = new TerrainLayer[m_LayersCount];
-            m_RawIDMaskPaths = new List<string>();
-            m_AlphaTexturePaths = new List<string>();
-            
+            m_OriginAlphaPaths = new List<string>();
+            m_OriginAlphaArray = new Texture2DArray(m_AlphamapResolution, m_AlphamapResolution, m_LayersCount, TextureFormat.R8, 0, true);
             for (int i = 0; i < m_LayersCount; i++)
             {
                 float alpha = 0;
                 float coverage = 0;
                 float occupancy = 0;
-                Texture2D tempAlphaTexture = new Texture2D(m_AlphamapResolution, m_AlphamapResolution, TextureFormat.R16, 0, true);
-                
+                Texture2D tempAlphaTexture = new Texture2D(m_AlphamapResolution, m_AlphamapResolution, TextureFormat.R8, 0, true);
                 for (int x = 0; x < m_AlphamapResolution; x++)
                 for (int y = 0; y < m_AlphamapResolution; y++)
                 {
@@ -78,78 +82,137 @@ namespace TerrainBlend16
                     occupancy += alpha;
                     if (alpha > 0) coverage ++;
                     
-                    tempAlphaTexture.SetPixel(y, x, new Color(alpha, alpha, alpha, alpha));
+                    tempAlphaTexture.SetPixel(y, x, new Color(alpha, alpha, alpha, 1));
                 }
                 coverage /= (m_AlphamapResolution * m_AlphamapResolution);
                 occupancy /= (m_AlphamapResolution * m_AlphamapResolution);
                 m_TerrainLayers[i] = new TerrainLayer(coverage, occupancy);
                 tempAlphaTexture.Apply();
+                Graphics.CopyTexture(tempAlphaTexture, 0, 0, m_OriginAlphaArray, i, 0);
+                string originSavePath = GetAssetSavePath($"OriginAlpha_{i}.tga", "OriginAlpha");
+                m_OriginAlphaPaths.Add(originSavePath);
+                Utils.SaveTexture(tempAlphaTexture, originSavePath);
+            }
+            m_OriginAlphaArray.Apply(false, true);
+            m_OriginAlphaArray.filterMode = FilterMode.Point;
+            AssetDatabase.CreateAsset(m_OriginAlphaArray, GetAssetSavePath("OriginAlphaArray.asset", "OriginAlpha"));
+            AssetDatabase.Refresh();
+            for (int i = 0; i < m_LayersCount; i++)
+            {
+                Utils.SolveCompression(FilterMode.Point, TextureImporterFormat.R8, m_OriginAlphaPaths[i], m_AlphamapResolution);
+                m_TerrainLayers[i].m_OriginAlpha = AssetDatabase.LoadAssetAtPath<Texture2D>(m_OriginAlphaPaths[i]);
+            }
+            m_CoverageIndexRank = SortCoverageOrOccupancy(m_TerrainLayers, true);
+            m_OccupancyIndexRank = SortCoverageOrOccupancy(m_TerrainLayers, false);
+            AssetDatabase.Refresh();
+        }
+        /// <summary>
+        /// 自动擦除
+        /// </summary>
+        public void AutoErase()
+        {
+            if (m_OriginAlphaArray == null) return;
+            m_AlphaTexturePaths = new List<string>();
+            m_RawIDMaskPaths = new List<string>();
+            int threadGroups = Mathf.CeilToInt(m_AlphamapResolution / 8);
+            // 获得擦除的Mask
+            EraseShaderUtils.s_Shader.SetInts(EraseShaderUtils.s_TerrainParamsID, m_LayersCount, m_AlphamapResolution, 0);
+            EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_EraseMaskKernel, EraseShaderUtils.s_AlphaTextureArrayID, m_OriginAlphaArray);
+            RenderTexture m_EraseMaskRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_EraseMaskKernel, EraseShaderUtils.s_EraseMaskResultID, m_EraseMaskRT);
+            EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_EraseMaskKernel, threadGroups, threadGroups, 1);
+            // 简单擦除
+            EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_EraseLayerKernel, EraseShaderUtils.s_EraseMaskID, m_EraseMaskRT);
+            EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_EraseLayerKernel, EraseShaderUtils.s_AlphaTextureArrayID, m_OriginAlphaArray);
+            RenderTexture m_EraseAlphaResultRT = Utils.CreateRenderTexture3D(m_AlphamapResolution, m_LayersCount, RenderTextureFormat.R8);
+            EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_EraseLayerKernel, EraseShaderUtils.s_AlphaTextureArrayResultID, m_EraseAlphaResultRT);
+            EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_EraseLayerKernel, threadGroups, threadGroups, 1);
+            // 孤立点处理
+            List<RenderTexture> m_SmoothEraseRTList = new List<RenderTexture>();
+            RenderTexture m_IsolatedMaskRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            Graphics.CopyTexture(m_EraseMaskRT, m_IsolatedMaskRT);
+            // TODO: 如果平滑的硬边对整体影响大的话, 可以考虑循环执行; //目前只执行一次
+            for (int i = 0; i < m_LayersCount; i++)
+            {
+                EraseShaderUtils.s_Shader.SetInts(EraseShaderUtils.s_TerrainParamsID, m_LayersCount, m_AlphamapResolution, i);
+                // 吸附孤立点
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_AppendIsolatedPointKernel, EraseShaderUtils.s_EraseMaskID, m_IsolatedMaskRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_AppendIsolatedPointKernel, EraseShaderUtils.s_AlphaTextureID, m_TerrainLayers[i].m_OriginAlpha);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_AppendIsolatedPointKernel, EraseShaderUtils.s_AlphaTextureArrayID, m_EraseAlphaResultRT);
+                RenderTexture m_AppendEraseRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.R8);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_AppendIsolatedPointKernel, EraseShaderUtils.s_EraseMaskResultID, m_EraseMaskRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_AppendIsolatedPointKernel, EraseShaderUtils.s_AlphaTextureResultID, m_AppendEraseRT);
+                EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_AppendIsolatedPointKernel, threadGroups, threadGroups, 1);
+                // 寻找孤立点, 并将其移除
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_FindIsolatedPointKernel, EraseShaderUtils.s_EraseMaskID, m_EraseMaskRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_FindIsolatedPointKernel, EraseShaderUtils.s_AlphaTextureID, m_AppendEraseRT);
+                RenderTexture m_SmoothEraseRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.R8);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_FindIsolatedPointKernel, EraseShaderUtils.s_EraseMaskResultID, m_IsolatedMaskRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_FindIsolatedPointKernel, EraseShaderUtils.s_AlphaTextureResultID, m_SmoothEraseRT);
+                EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_FindIsolatedPointKernel, threadGroups, threadGroups, 1);
+                // 输出移除孤立点的贴图
+                m_SmoothEraseRTList.Add(m_SmoothEraseRT);
+                Utils.SaveRT2Texture(m_IsolatedMaskRT, TextureFormat.RGBA32, GetAssetSavePath($"Isolated_{i}.tga", "Erase/Alpha"));
+                m_AppendEraseRT.Release();
+            }
+            for (int i = 0; i < m_LayersCount; i++)
+            {
+                // 处理擦除产生的硬边
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_EraseMaskID, m_EraseMaskRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_AlphaTextureID, m_SmoothEraseRTList[i]);
+                RenderTexture m_AlphaResultRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.R8);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_AlphaTextureResultID, m_AlphaResultRT);
+                EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_BlurredEraseEdgeKernel, threadGroups, threadGroups, 1);
+                string alphaSavePath = GetAssetSavePath($"AutoEraseAlpha_{i}.tga", "Erase/Alpha");
+                Utils.SaveRT2Texture(m_AlphaResultRT, TextureFormat.RGBA32, alphaSavePath);
+                m_AlphaTexturePaths.Add(alphaSavePath);
 
-                // 输出RawIDMask和AlphaTexture
-                OutputRawTexture(tempAlphaTexture, i);
+                // 输出RawIDMask
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_EraseMaskID, m_EraseMaskRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_AlphaTextureID, m_AlphaResultRT);
+                RenderTexture m_IDMaskResultRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_EraseMaskResultID, m_IDMaskResultRT);
+                EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_RawIDMaskKernel, threadGroups, threadGroups, 1);
+                string idMaskSavePath = GetAssetSavePath($"RawIDMask_{i}.tga", "Erase/IDMask");
+                Utils.SaveRT2Texture(m_IDMaskResultRT, TextureFormat.RGBA32, idMaskSavePath);
+                m_RawIDMaskPaths.Add(idMaskSavePath);
+                m_AlphaResultRT.Release();
+                m_IDMaskResultRT.Release();
+            }
+            m_EraseMaskRT.Release();
+            m_EraseAlphaResultRT.Release();
+            m_IsolatedMaskRT.Release();
+            AssetDatabase.Refresh();
+            for (int i = 0; i < m_LayersCount; i++)
+            {
+                Utils.SolveCompression(FilterMode.Point, TextureImporterFormat.R8, m_AlphaTexturePaths[i], m_AlphamapResolution);
+                Utils.SolveCompression(FilterMode.Point, TextureImporterFormat.RGBA32, m_RawIDMaskPaths[i], m_AlphamapResolution);
+                m_TerrainLayers[i].m_AutoEraseAlpha = AssetDatabase.LoadAssetAtPath<Texture2D>(m_AlphaTexturePaths[i]);
+                m_TerrainLayers[i].m_RawIDMask = AssetDatabase.LoadAssetAtPath<Texture2D>(m_RawIDMaskPaths[i]);
             }
             AssetDatabase.Refresh();
-            // 加载生成的贴图, 并修改其格式
-            int loadTextureCount = Mathf.Min(m_RawIDMaskPaths.Count, m_AlphaTexturePaths.Count);
-            for (int i = 0; i < loadTextureCount; i++)
-            {
-                Utils.SolveCompression(FilterMode.Point, TextureImporterFormat.RGBA32, m_RawIDMaskPaths[i], m_AlphamapResolution);
-                Utils.SolveCompression(FilterMode.Point, TextureImporterFormat.R16, m_AlphaTexturePaths[i], m_AlphamapResolution);
-                m_TerrainLayers[i].m_RawIDMask = AssetDatabase.LoadAssetAtPath<Texture2D>(m_RawIDMaskPaths[i]);
-                m_TerrainLayers[i].m_AlphaTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(m_AlphaTexturePaths[i]);
-            }
-            // 生成RawIDMask和AlphaTexture的Array贴图
-            m_RawIDMaskArray = new Texture2DArray(m_AlphamapResolution, m_AlphamapResolution, loadTextureCount, 
-                TextureFormat.RGBA32, 0, true);
-            m_AlphaTextureArray = new Texture2DArray(m_AlphamapResolution, m_AlphamapResolution, loadTextureCount, 
-                TextureFormat.R16, 0, true);
-            for (int i = 0; i < loadTextureCount; i++)
+        }
+
+        public void CombineTextureArray()
+        {
+            m_RawIDMaskArray = new Texture2DArray(m_AlphamapResolution, m_AlphamapResolution, m_LayersCount, TextureFormat.RGBA32, 0, true);
+            m_AlphaTextureArray = new Texture2DArray(m_AlphamapResolution, m_AlphamapResolution, m_LayersCount, TextureFormat.R8, 0, true);
+            for (int i = 0; i < m_LayersCount; i++)
             {
                 Graphics.CopyTexture(m_TerrainLayers[i].m_RawIDMask, 0, 0, m_RawIDMaskArray, i, 0);
-                Graphics.CopyTexture(m_TerrainLayers[i].m_AlphaTexture, 0, 0, m_AlphaTextureArray, i, 0);
+                Graphics.CopyTexture(m_TerrainLayers[i].m_AutoEraseAlpha, 0, 0, m_AlphaTextureArray, i, 0);
             }
             m_RawIDMaskArray.Apply(false, true);
             m_AlphaTextureArray.Apply(false, true);
             m_RawIDMaskArray.filterMode = FilterMode.Point;
             m_AlphaTextureArray.filterMode = FilterMode.Point;
-            AssetDatabase.CreateAsset(m_RawIDMaskArray, GetAssetSavePath("RawIDMaskArray.asset", true));
-            AssetDatabase.CreateAsset(m_AlphaTextureArray, GetAssetSavePath("AlphaTextureArray.asset", false));
+            AssetDatabase.CreateAsset(m_RawIDMaskArray, GetAssetSavePath("RawIDMaskArray.asset", "Erase"));
+            AssetDatabase.CreateAsset(m_AlphaTextureArray, GetAssetSavePath("AlphaTextureArray.asset", "Erase"));
             AssetDatabase.Refresh();
-            // 更新覆盖率和占有率
-            m_CoverageIndexRank = SortCoverageOrOccupancy(m_TerrainLayers, true);
-            m_OccupancyIndexRank = SortCoverageOrOccupancy(m_TerrainLayers, false);
         }
-        
-        public string GetAssetSavePath(string texName, bool isRawIDMask)
+        public string GetAssetSavePath(string texName, string parentPath)
         {
-            string parentPath = isRawIDMask ? "RawIDMasks" : "AlphaTextures";
             return $"{Utils.s_RootPath}/TerrainAsset/{m_TerrainName}/{parentPath}/{texName}";
-        }
-        private void OutputRawTexture(Texture2D alphaTexture, int layerIndex)
-        {
-            // 根据AlphaTexture处理RawIDMask
-            if (CShaderUtils.s_RawIDMaskKernel >= 0)
-            {
-                int threadGroups = Mathf.CeilToInt(m_AlphamapResolution / 8);
-                RenderTexture tempRawIDMask = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                CShaderUtils.s_Shader.SetInts(CShaderUtils.s_TerrainParamsID, layerIndex, m_AlphamapResolution);
-                CShaderUtils.s_Shader.SetTexture(CShaderUtils.s_RawIDMaskKernel, CShaderUtils.s_AlphaTextureID, alphaTexture);
-                CShaderUtils.s_Shader.SetTexture(CShaderUtils.s_RawIDMaskKernel, CShaderUtils.s_IDResultID, tempRawIDMask);
-                CShaderUtils.s_Shader.Dispatch(CShaderUtils.s_RawIDMaskKernel, threadGroups, threadGroups, 1);
-
-                string rawIDMaskPath = GetAssetSavePath($"RawIDMask_{layerIndex}.tga", true);
-                Utils.SaveRT2Texture(tempRawIDMask, TextureFormat.RGBA32, rawIDMaskPath);
-                m_RawIDMaskPaths.Add(rawIDMaskPath);
-                tempRawIDMask.Release();
-            }
-            else
-            {
-                Debug.LogError("未找到RawIDMask内核!");
-                return;
-            }
-            string alphaTexturePath = GetAssetSavePath($"AlphaTexture_{layerIndex}.tga", false);
-            m_AlphaTexturePaths.Add(alphaTexturePath);
-            Utils.SaveTexture(alphaTexture, alphaTexturePath);
         }
         /// <summary>
         /// 对覆盖率和占有率进行排序

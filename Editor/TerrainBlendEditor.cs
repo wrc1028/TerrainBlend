@@ -8,10 +8,11 @@ namespace TerrainBlend16
     {
         public override void OnInspectorGUI() 
         {
+            TerrainBlend source = target as TerrainBlend;
             base.OnInspectorGUI();
             if (GUILayout.Button("Update"))
             {
-                (target as TerrainBlend).UpdateTerrainBlend();
+                source.UpdateTerrainBlend();
             }
         }
     }
