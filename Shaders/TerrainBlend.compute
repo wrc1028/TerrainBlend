@@ -1,29 +1,30 @@
 ﻿// 混合
 #pragma kernel RawIDTexture
-#pragma kernel CheckIDLayerEdge
+#pragma kernel FindIDLayerEdge
 #pragma kernel IDLayerExtend
+#pragma kernel CheckLayerSimilarEdge
+#pragma kernel CheckExtendLayerEdge
+#pragma kernel TransformDimension
 #pragma kernel DoubleLayersBlend
 #pragma kernel ThreeLayersBlend
 
 uint3 _TerrainParams;
 #define _LayerCount _TerrainParams.x // 地形层数
 #define _Resolution _TerrainParams.y // 地形Blend贴图的分辨率
-#define _LayerIndex _TerrainParams.z
+#define _LayerIndex _TerrainParams.z 
 float4 _ExtendParams;
 
 Texture2D<float> _AlphaTexture;
 Texture2D<float4> _RawIDTexture;
-// Texture2D<float4> _RawIDTextureMask;
 Texture2D<float4> _SecondLayerExtend;
 Texture2D<float4> _ThirdLayerExtend;
-Texture2D<float4> _TempBlendTexture;
+Texture2D<float4> _TempTexture;
 StructuredBuffer<uint> _IndexRank;
 
 Texture2DArray<float4> _RawIDMaskArray;
 Texture2DArray<float> _AlphaTextureArray;
 
 RWTexture2D<float4> IDResult;
-// RWTexture2D<float4> IDResultMask;
 RWTexture2D<float4> BlendResult;
 
 static const int2 _Offset[8] = 
@@ -55,7 +56,7 @@ uint2 GetNearID(uint2 id, uint index)
 {
     return clamp(id + _Offset[index], 0, _Resolution - 1);
 }
-uint2 GetNeraID(uint2 id, int2 offset)
+uint2 GetNearID(uint2 id, int2 offset)
 {
     return clamp(id + offset, 0, _Resolution - 1);
 }
@@ -72,12 +73,12 @@ void RawIDTexture (uint3 id : SV_DispatchThreadID)
     // 生成初始的IDTexture
     uint  validLayerCount = 0;
     uint3 layersIndex = 0;
-    bool isSingleLayer = false;
+    // bool isSingleLayer = false;
     for (uint i = 0; i < _LayerCount; i++)
     {
         uint3 texID = uint3(id.xy, _IndexRank[i]);
         float4 rawIDMask = _RawIDMaskArray[texID];
-        isSingleLayer = isSingleLayer || rawIDMask.g == 1;
+        // isSingleLayer = isSingleLayer || rawIDMask.g == 1;
         if (rawIDMask.r == 0) continue;
         validLayerCount += 1;
         if (validLayerCount == 1) layersIndex.x = _IndexRank[i];
@@ -85,11 +86,11 @@ void RawIDTexture (uint3 id : SV_DispatchThreadID)
         if (validLayerCount == 3) layersIndex.z = _IndexRank[i];
     }
     // 单层 ==> 多层
-    if (validLayerCount == 1 && !isSingleLayer)
-    {
-        validLayerCount = 2;
-        layersIndex.y = layersIndex.x;
-    }
+    // if (validLayerCount == 1 && !isSingleLayer)
+    // {
+    //     validLayerCount = 2;
+    //     layersIndex.y = layersIndex.x;
+    // }
 
     // RGB: 标记是否参与混合以及ID, A 000双层000单层
     float3 idsValue = float3(Encode(layersIndex.x, 1), Encode(layersIndex.y, 1), Encode(layersIndex.z, 1));
@@ -103,43 +104,14 @@ bool DistinguishHierarchy(uint layersCount, float mask)
     else if (layeMask.y == 1) return layersCount == 1;
     else return layersCount == 3;
 }
-// 检查n层区域内的边缘处交接处, 将混合权限差距过大的位置进行优化(层数下降一个等级)
-[numthreads(8, 8, 1)]
-void CheckIDLayerEdge (uint3 id : SV_DispatchThreadID)
-{
-    float4 rawIDValue = _RawIDTexture[id.xy];
-    float  centerIDValue = dot(_ExtendParams.xyz, rawIDValue.xyz);
-    if (DistinguishHierarchy(_ExtendParams.w, rawIDValue.a))
-    {
-        uint3 texID = uint3(id.xy, Decode(centerIDValue));
-        float centerAlpha = _AlphaTextureArray[texID];
-        for (uint i = 0; i < 8; i++)
-        {
-            float4 nearRawIDValue = _RawIDTexture[GetNearID(id.xy, i)];
-            float  nearIDValue = dot(_ExtendParams.xyz, nearRawIDValue.xyz);
-            if (!DistinguishHierarchy(_ExtendParams.w, nearRawIDValue.a)
-                || Decode(centerIDValue) == Decode(nearIDValue)) continue;
-            texID = uint3(GetNearID(id.xy, i), Decode(nearIDValue));
-            float nearAlpha = _AlphaTextureArray[texID];
-            if ((nearAlpha - centerAlpha) > 0.8)
-            {
-                // 降一个混合维度
-                float layerMask = _ExtendParams.w == 2 ? 1 : (_ExtendParams.w == 3 ? 16 : 0);
-                rawIDValue.a = layerMask / 255.0;
-            }
-        }
-    }
-    IDResult[id.xy] = rawIDValue;
-}
-
-// 扩展一层ID, 给n层混合作为采样的参考
+// 向外扩展(Alpha > 0)的ID边界
 [numthreads(8, 8, 1)]
 void IDLayerExtend (uint3 id : SV_DispatchThreadID)
 {
     float4 rawIDValue = _RawIDTexture[id.xy];
     float  centerIDValue = dot(_ExtendParams.xyz, rawIDValue.xyz);
     if (DistinguishHierarchy(_ExtendParams.w, rawIDValue.a))
-        IDResult[id.xy] = float4(centerIDValue, 0, 0, 1);
+        IDResult[id.xy] = float4(centerIDValue, 0, 0, (16.0 / 255.0));
     else
     {
         // 当前不是n层的区域, 查找是否有n层的存在
@@ -151,6 +123,7 @@ void IDLayerExtend (uint3 id : SV_DispatchThreadID)
             float  nearIDValue = dot(_ExtendParams.xyz, nearRawIDValue.xyz);
             uint3  texID = uint3(GetNearID(id.xy, i), Decode(nearIDValue));
             float  nearAlpha = _AlphaTextureArray[texID];
+            // if (nearAlpha == 0) continue;
             if (DistinguishHierarchy(_ExtendParams.w, nearRawIDValue.a))
             {
                 rawIDResult.w = 0.25;
@@ -194,48 +167,202 @@ void IDLayerExtend (uint3 id : SV_DispatchThreadID)
             if (rawIDResult.z != -1)
             {
                 if (nearAlphas.z > tempAlphas.x)
+                {
                     tempIDResult = float3(rawIDResult.z, tempIDResult.xy);
+                    tempAlphas = float3(nearAlphas.z, tempAlphas.xy);
+                }
                 else if (nearAlphas.z < tempAlphas.y)
+                {
                     tempIDResult = float3(tempIDResult.xy, rawIDResult.z);
+                    tempAlphas = float3(tempAlphas.xy, nearAlphas.z);
+                }
                 else
+                {
                     tempIDResult = float3(tempIDResult.x, rawIDResult.z, tempIDResult.y);
+                    tempAlphas = float3(tempAlphas.x, nearAlphas.z, tempAlphas.y);
+                }
             }
         }
-        IDResult[id.xy] = float4(tempIDResult.xyz, max(0, rawIDResult.w));
+        // 如果周围的混合值相似
+        bool isSimilar = false;
+        if (rawIDResult.z != -1 && (tempAlphas.x - tempAlphas.z) < 0.2)
+            tempIDResult.xyz = float3(tempIDResult.y, 0, 0);
+        else if (rawIDResult.y != -1 && (tempAlphas.x - tempAlphas.y) < 0.15)
+            tempIDResult.yz = 0;
+
+        IDResult[id.xy] = float4(tempIDResult.xyz, max(0, rawIDResult.w) > 0 ? (16.0 / 255.0) : 0);
     }
+}
+bool ComparativeRanking(uint A, uint B)
+{
+    bool isGreater = true;
+    for (uint i = 0; i < _LayerCount; i++)
+    {
+        if (A == _IndexRank[i])
+        {
+            isGreater = true;
+            break;
+        }
+        else if (B == _IndexRank[i])
+        {
+            isGreater = false;
+            break;
+        }
+    }
+    return isGreater;
+}
+// 检查不同混合层间的边界, 并输出
+[numthreads(8, 8, 1)]
+void FindIDLayerEdge (uint3 id : SV_DispatchThreadID)
+{
+    float4 rawIDValue = _RawIDTexture[id.xy];
+    float  centerIDValue = dot(_ExtendParams.xyz, rawIDValue.xyz);
+    float4 maskResult = 0;
+    if (DistinguishHierarchy(_ExtendParams.w, rawIDValue.a))
+    {
+        bool onBoundary = false;
+        int centerIndex = Decode(centerIDValue);
+        for (uint i = 0; i < 8; i++)
+        {
+            float4 nearRawIDValue = _RawIDTexture[GetNearID(id.xy, i)];
+            float  nearIDValue = dot(_ExtendParams.xyz, nearRawIDValue.xyz);
+            if (!DistinguishHierarchy(_ExtendParams.w, nearRawIDValue.a) ||
+                centerIndex == Decode(nearIDValue)) continue;
+            onBoundary = true;
+            break;
+        }
+        maskResult.r = centerIDValue;
+        maskResult.g = _AlphaTextureArray[uint3(id.xy, Decode(centerIDValue))];
+        maskResult.b = 1;
+        maskResult.a = onBoundary ? 1 : 0;
+    }
+    IDResult[id.xy] = maskResult;
+}
+// 处理边界: 输出Mask和IDTexture
+// 其实就两种情况: 相似和不同
+[numthreads(8, 8, 1)]
+void CheckLayerSimilarEdge (uint3 id : SV_DispatchThreadID)
+{
+    float4 edgeMask = _TempTexture[id.xy];
+    bool canTransform = false;
+    bool isSimilar = true;
+    int centerIndex = Decode(edgeMask.x);
+    if (edgeMask.a == 1)
+    {
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+            float4 nearEdgeMask = _TempTexture[nearID];
+            int nearIndex = Decode(nearEdgeMask.x);
+            if (centerIndex == nearIndex) continue;
+            if (nearEdgeMask.a == 1 && !ComparativeRanking(centerIndex, nearIndex))
+            {
+                // TODO: 当前是根据ID读取顺序进行的判断, 后续根据情况完善
+                canTransform = true;
+            }
+            if (nearEdgeMask.b == 1)
+            {
+                float centerNearAlpha = _AlphaTextureArray[uint3(nearID, Decode(edgeMask.r))];
+                // 当前位置的混合值和周围不同ID的混合值相比||周围某一点上的混合值和当前点ID对应的混合值做对比
+                if (abs(edgeMask.g - nearEdgeMask.g) > 0.2 || abs(centerNearAlpha - nearEdgeMask.g) > 0.35)
+                    isSimilar = false;
+            }
+        }
+        if (canTransform) edgeMask.a = 0.5;
+        if (isSimilar) edgeMask.a = 0;
+    }
+    IDResult[id.xy] = edgeMask;
+}
+
+// 在去除相似后的alpha == 0.5的区域内寻找遍历周围
+// 如果启用这个需要考虑把混合为零的情况考虑进去
+[numthreads(8, 8, 1)]
+void CheckExtendLayerEdge (uint3 id : SV_DispatchThreadID)
+{
+    float4 edgeMask = _TempTexture[id.xy];
+    float4 extendValue = _SecondLayerExtend[id.xy];
+    bool canRetain = false;
+    if (edgeMask.a > 0 && edgeMask.a < 1)
+    {
+        if (extendValue.y > 0)
+            canRetain = true;
+        else
+        {
+            for (uint i = 0; i < 8; i++)
+            {
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearEdgeMask = _TempTexture[nearID];
+                float4 nearExtendValue = _SecondLayerExtend[nearID];
+                if (nearExtendValue.y > 0 && nearEdgeMask.a == 1)
+                    canRetain = true;
+            }
+        }
+    }
+    if (!canRetain) edgeMask.a = 0;
+    IDResult[id.xy] = edgeMask;
+}
+
+[numthreads(8, 8, 1)]
+void TransformDimension (uint3 id : SV_DispatchThreadID)
+{
+    float4 rawIDValue = _RawIDTexture[id.xy];
+    float4 edgeMask = _TempTexture[id.xy];
+    // TODO: 判断需不需要限制区域
+    bool canTransform = false;
+    int centerIndex = Decode(edgeMask.r);
+    if (edgeMask.a > 0 && edgeMask.a < 1)
+        canTransform = true;
+    if (DistinguishHierarchy(2, rawIDValue.a))
+    {
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+            float4 nearEdgeMask = _TempTexture[nearID];
+            if (edgeMask.r != nearEdgeMask.r ||
+                nearEdgeMask.a == 0 || nearEdgeMask.a == 1) continue;
+            canTransform = true;
+        }
+    }
+    if (canTransform && !DistinguishHierarchy(3, rawIDValue.a))
+    {
+        rawIDValue.r = Encode(Decode(rawIDValue.r), 0);
+        rawIDValue.b = edgeMask.r;
+        rawIDValue.a = 0;
+        edgeMask.a = 0;
+    }
+    edgeMask.a = 1 - DecodeMask(rawIDValue.r).y;
+    IDResult[id.xy] = rawIDValue;
+    BlendResult[id.xy] = edgeMask;
 }
 
 [numthreads(8, 8, 1)]
 void DoubleLayersBlend (uint3 id : SV_DispatchThreadID)
 {
-    // ID Map
-    float4 rawIDValue = _RawIDTexture[id.xy];
-    if (DistinguishHierarchy(2, rawIDValue.a))
-    {
-        for (uint i = 0; i < 8; i++)
-        {
-            float4 nearSecondLayerValue = _SecondLayerExtend[GetNearID(id.xy, i)];
-            int2 secondID = DecodeMask(nearSecondLayerValue.y);
-            if (secondID.y == 1)
-            {
-                int firstID = Decode(nearSecondLayerValue.x);
-                float nearFirstAlpha = _AlphaTextureArray[uint3(GetNearID(id.xy, i), firstID)];
-                float nearSecondAlpha = _AlphaTextureArray[uint3(GetNearID(id.xy, i), secondID.x)];
-                if ((nearFirstAlpha - nearSecondAlpha) > 0.8 && rawIDValue.y == nearSecondLayerValue.y)
-                    rawIDValue.r = Encode(Decode(rawIDValue.r), 0);
-            }
-        }
-    }
-    IDResult[id.xy] = rawIDValue;
     // Blend Map
-    float4 secondLayerValue = _SecondLayerExtend[id.xy];
+    float4 edgeMask = _SecondLayerExtend[id.xy];
     float  doubleAreaAlpha = 0;
-    if (secondLayerValue.a != 0)
+    if (edgeMask.b != 0)
     {
-        uint3 texID = uint3(id.xy, Decode(secondLayerValue.x));
+        uint3 texID = uint3(id.xy, Decode(edgeMask.x));
         doubleAreaAlpha = _AlphaTextureArray[texID];
     }
     BlendResult[id.xy] = float4(doubleAreaAlpha, 0, 0, 1);
+    // ID Map
+    // float4 rawIDValue = _RawIDTexture[id.xy];
+    // IDResult[id.xy] = rawIDValue;
+}
+
+// 将混合往Alpha移动, ID值的Mask改为0: 
+// 1、去除相似边后, GB两层值大且ID相同的一方的混合值往Alpha扩展;
+// 2、从二层转换而来的第三层, 和原来的第三层有边缘上的冲突时, 将原始第三层的混合值往Alpha扩展
+
+[numthreads(8, 8, 1)] 
+void TransformToAlpha (uint3 id : SV_DispatchThreadID)
+{
+    float4 rawIDValue = _RawIDTexture[id.xy];
+    float4 secondEdgeMask = _SecondLayerExtend[id.xy];
+    float4 thirdEdgeMask = _ThirdLayerExtend[id.xy];
+    
 }
 
 [numthreads(8, 8, 1)]
@@ -259,5 +386,5 @@ void ThreeLayersBlend (uint3 id : SV_DispatchThreadID)
         texID = uint3(id.xy, Decode(thirdLayerValue.x));
         threeAreaAlpha.y = _AlphaTextureArray[texID];
     }
-    BlendResult[id.xy] = float4(_TempBlendTexture[id.xy].r, threeAreaAlpha, 1);
+    BlendResult[id.xy] = float4(_TempTexture[id.xy].r, threeAreaAlpha, 1);
 }

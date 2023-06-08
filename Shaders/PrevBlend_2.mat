@@ -7,7 +7,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: PrevBlend
+  m_Name: PrevBlend_2
   m_Shader: {fileID: 4800000, guid: 153504c93eaae4c4b931bcdb5c01812e, type: 3}
   m_ShaderKeywords: 
   m_LightmapFlags: 4
@@ -20,11 +20,11 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _FxFBlendTex:
-        m_Texture: {fileID: 2800000, guid: e9192143454ab124ebef43c50aeadcb7, type: 3}
+        m_Texture: {fileID: 2800000, guid: a5161e37092ff674f9c46d4ccc9e3d34, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFIDTex:
-        m_Texture: {fileID: 2800000, guid: 7895f95559e4cdd49a542d8db5080637, type: 3}
+        m_Texture: {fileID: 2800000, guid: 2318522f46e95264ba5289132aa4e772, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Mask:
@@ -33,4 +33,4 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Floats: []
     m_Colors:
-    - _Channel: {r: 1, g: 1, b: 1, a: 0.4}
+    - _Channel: {r: 1, g: 1, b: 1, a: 1}

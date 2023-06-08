@@ -28,7 +28,7 @@ namespace TerrainBlend16
 
         public static int s_AlphaTextureID = Shader.PropertyToID("_AlphaTexture");
         public static int s_RawIDTextureID = Shader.PropertyToID("_RawIDTexture");
-        public static int s_TempBlendTextureID = Shader.PropertyToID("_TempBlendTexture");
+        public static int s_TempTextureID = Shader.PropertyToID("_TempTexture");
         public static int s_SecondLayerExtendID = Shader.PropertyToID("_SecondLayerExtend");
         public static int s_ThirdLayerExtendID = Shader.PropertyToID("_ThirdLayerExtend");
         public static int s_RawIDMaskArrayID = Shader.PropertyToID("_RawIDMaskArray");
@@ -41,9 +41,22 @@ namespace TerrainBlend16
         {
             get { return GetKernel("RawIDTexture"); }
         }
-        public static int s_CheckIDLayerEdgeKernel
+        public static int s_FindIDLayerEdgeKernel
         {
-            get { return GetKernel("CheckIDLayerEdge"); }
+            get { return GetKernel("FindIDLayerEdge"); }
+        }
+        
+        public static int s_CheckLayerSimilarEdgeKernel
+        {
+            get { return GetKernel("CheckLayerSimilarEdge"); }
+        }
+        public static int s_CheckExtendLayerEdgeKernel
+        {
+            get { return GetKernel("CheckExtendLayerEdge"); }
+        }
+        public static int s_TransformDimensionKernel
+        {
+            get { return GetKernel("TransformDimension"); }
         }
         public static int s_IDLayerExtendKernel
         {
@@ -80,9 +93,11 @@ namespace TerrainBlend16
         public static int s_TerrainParamsID = Shader.PropertyToID("_TerrainParams");
         public static int s_EraseMaskID = Shader.PropertyToID("_EraseMask");
         public static int s_AlphaTextureID = Shader.PropertyToID("_AlphaTexture");
+        public static int s_AlphaNormalizeID = Shader.PropertyToID("_AlphaNormalize");
         public static int s_AlphaTextureArrayID = Shader.PropertyToID("_AlphaTextureArray");
         public static int s_EraseMaskResultID = Shader.PropertyToID("EraseMaskResult");
         public static int s_AlphaTextureResultID = Shader.PropertyToID("AlphaTextureResult");
+        public static int s_AlphaNormalizeResultID = Shader.PropertyToID("AlphaNormalizeResult");
         public static int s_AlphaTextureArrayResultID = Shader.PropertyToID("AlphaTextureArrayResult");
         // kernel
         public static int s_EraseMaskKernel

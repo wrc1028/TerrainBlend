@@ -13,10 +13,12 @@ uint3 _TerrainParams;
 
 Texture2D<float4> _EraseMask;        // R: 多层区域的Mask; G: 两层以上区域的Mask; B: 孤立点Mask
 Texture2D<float> _AlphaTexture;
+Texture2D<float> _AlphaNormalize;
 Texture2DArray<float> _AlphaTextureArray;
 // result
 RWTexture2D<float4> EraseMaskResult;
 RWTexture2D<float> AlphaTextureResult;
+RWTexture2D<float> AlphaNormalizeResult;
 RWTexture2DArray<float> AlphaTextureArrayResult;
 
 static const int2 _Offset[8] = 
@@ -101,11 +103,11 @@ void EraseLayer (uint3 id : SV_DispatchThreadID)
         {
             texID = uint3(id.xy, m);
             if (retainIds.x == m)
-                AlphaTextureArrayResult[texID] = alphas.x / alphaSum;
+                AlphaTextureArrayResult[texID] = alphas.x;
             else if (retainIds.y == m)
-                AlphaTextureArrayResult[texID] = alphas.y / alphaSum;
+                AlphaTextureArrayResult[texID] = alphas.y;
             else if (retainIds.z == m)
-                AlphaTextureArrayResult[texID] = alphas.z / alphaSum;
+                AlphaTextureArrayResult[texID] = alphas.z;
             else
                 AlphaTextureArrayResult[texID] = 0;
         }
@@ -169,21 +171,22 @@ void BlurredEraseEdge (uint3 id : SV_DispatchThreadID)
     if (centerAlpha > 0)
     {
         float minDistance = 1000;
-        for (int j = -5; j < 6; j++)
+        for (int j = -6; j < 7; j++)
         {
-            for (int k = -5; k < 6; k++)
+            for (int k = -6; k < 7; k++)
             {
                 uint2 nearID = GetNeraID(id.xy, int2(j, k));
                 if (_EraseMask[nearID].r == 0) continue;
                 float nearAlpha = _AlphaTexture[nearID];
                 if (nearAlpha == 0)
-                    minDistance = min(minDistance, max(0, sqrt(j * j + k * k) - 0.5));
+                    minDistance = min(minDistance, max(0, sqrt(j * j + k * k) - 1.5));
             }
         }
         if (minDistance != 1000)
-            centerAlpha = centerAlpha * min(1, minDistance * 0.222222);
+            centerAlpha = centerAlpha * min(1, minDistance * 0.2);
     }
     AlphaTextureResult[id.xy] = centerAlpha;
+    AlphaNormalizeResult[id.xy] = _AlphaNormalize[id.xy] + centerAlpha;
 }
 
 // 输出RawIDMask
@@ -192,19 +195,20 @@ void RawIDMask (uint3 id : SV_DispatchThreadID)
 {
     float centerAlpha = _AlphaTexture[id.xy];
     bool signID = centerAlpha > 0;
-    bool singleLayer = centerAlpha == 1;
+    // bool singleLayer = centerAlpha == 1;
     if (_EraseMask[id.xy].g == 0)
     {
         for (uint j = 0; j < 8; j++)
         {
             float nearAlpha = _AlphaTexture[GetNearID(id.xy, j)];
-            if (!signID && nearAlpha > 0.04)
+            if (!signID && nearAlpha > 0)
                 signID = true;
-            if (singleLayer && (centerAlpha - nearAlpha > 0.8))
-                singleLayer = false;
+            // if (singleLayer && (centerAlpha - nearAlpha > 0.8))
+            //     singleLayer = false;
         }
     }
-    EraseMaskResult[id.xy] = float4(signID ? 1 : 0, singleLayer ? 1 : 0, 0, 1);
+    EraseMaskResult[id.xy] = float4(signID ? 1 : 0, 0, 0, 1);
+    AlphaTextureResult[id.xy] = centerAlpha / _AlphaNormalize[id.xy];
 }
 
 // 归一化 
@@ -212,13 +216,13 @@ void RawIDMask (uint3 id : SV_DispatchThreadID)
 void AlphaNormalize (uint3 id : SV_DispatchThreadID)
 {
     float alphaSum = 0;
-    for (int i = 0; i < _LayerCount; i++)
+    for (uint i = 0; i < _LayerCount; i++)
     {
         alphaSum += _AlphaTextureArray[uint3(id.xy, i)];
     }
-    for (int j = 0; j < _LayerCount; j++)
+    for (uint j = 0; j < _LayerCount; j++)
     {
         uint3 texID = uint3(id.xy, j);
-        AlphaTextureArrayResult[texID] = _AlphaTextureArray[texID] / max(0.5, alphaSum);
+        AlphaTextureArrayResult[texID] = _AlphaTextureArray[texID] / max(0.3, alphaSum);
     }
 }

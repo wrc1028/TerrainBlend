@@ -155,24 +155,40 @@ namespace TerrainBlend16
                 Utils.SaveRT2Texture(m_IsolatedMaskRT, TextureFormat.RGBA32, GetAssetSavePath($"Isolated_{i}.tga", "Erase/Alpha"));
                 m_AppendEraseRT.Release();
             }
+            List<RenderTexture> m_BlurredEraseRTList = new List<RenderTexture>();
+            RenderTexture m_AlphaNormalizeInput = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.R8);
+            RenderTexture m_AlphaNormalizeResult = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.R8);
             for (int i = 0; i < m_LayersCount; i++)
             {
                 // 处理擦除产生的硬边
                 EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_EraseMaskID, m_EraseMaskRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_AlphaNormalizeID, m_AlphaNormalizeInput);
                 EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_AlphaTextureID, m_SmoothEraseRTList[i]);
-                RenderTexture m_AlphaResultRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.R8);
-                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_AlphaTextureResultID, m_AlphaResultRT);
+                RenderTexture m_BlurredEraseRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.R8);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_AlphaTextureResultID, m_BlurredEraseRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_BlurredEraseEdgeKernel, EraseShaderUtils.s_AlphaNormalizeResultID, m_AlphaNormalizeResult);
                 EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_BlurredEraseEdgeKernel, threadGroups, threadGroups, 1);
+                Graphics.CopyTexture(m_AlphaNormalizeResult, m_AlphaNormalizeInput);
+                m_BlurredEraseRTList.Add(m_BlurredEraseRT);
+            }
+            Utils.SaveRT2Texture(m_AlphaNormalizeResult, TextureFormat.R8, GetAssetSavePath($"AlphaNormalize.tga", "Erase"));
+            // 输出IDMask和归一化后的Alpha
+            for (int i = 0; i < m_LayersCount; i++)
+            {
+                // // 输出RawIDMask
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_EraseMaskID, m_EraseMaskRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_AlphaNormalizeID, m_AlphaNormalizeResult);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_AlphaTextureID, m_BlurredEraseRTList[i]);
+                RenderTexture m_AlphaResultRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.R8);
+                RenderTexture m_IDMaskResultRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_AlphaTextureResultID, m_AlphaResultRT);
+                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_EraseMaskResultID, m_IDMaskResultRT);
+                EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_RawIDMaskKernel, threadGroups, threadGroups, 1);
+                
                 string alphaSavePath = GetAssetSavePath($"AutoEraseAlpha_{i}.tga", "Erase/Alpha");
                 Utils.SaveRT2Texture(m_AlphaResultRT, TextureFormat.RGBA32, alphaSavePath);
                 m_AlphaTexturePaths.Add(alphaSavePath);
 
-                // 输出RawIDMask
-                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_EraseMaskID, m_EraseMaskRT);
-                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_AlphaTextureID, m_AlphaResultRT);
-                RenderTexture m_IDMaskResultRT = Utils.CreateRenderTexture(m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                EraseShaderUtils.s_Shader.SetTexture(EraseShaderUtils.s_RawIDMaskKernel, EraseShaderUtils.s_EraseMaskResultID, m_IDMaskResultRT);
-                EraseShaderUtils.s_Shader.Dispatch(EraseShaderUtils.s_RawIDMaskKernel, threadGroups, threadGroups, 1);
                 string idMaskSavePath = GetAssetSavePath($"RawIDMask_{i}.tga", "Erase/IDMask");
                 Utils.SaveRT2Texture(m_IDMaskResultRT, TextureFormat.RGBA32, idMaskSavePath);
                 m_RawIDMaskPaths.Add(idMaskSavePath);
@@ -182,6 +198,8 @@ namespace TerrainBlend16
             m_EraseMaskRT.Release();
             m_EraseAlphaResultRT.Release();
             m_IsolatedMaskRT.Release();
+            m_AlphaNormalizeInput.Release();
+            m_AlphaNormalizeResult.Release();
             AssetDatabase.Refresh();
             for (int i = 0; i < m_LayersCount; i++)
             {
