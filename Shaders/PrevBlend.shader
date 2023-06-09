@@ -76,22 +76,22 @@
             {
                 UNITY_SETUP_INSTANCE_ID(input);
                 // input.uv.x = 1 - input.uv.x;
-                half4 idcol = SAMPLE_TEXTURE2D(_FxFIDTex, sampler_FxFIDTex, input.uv);
                 half4 blendWeight = SAMPLE_TEXTURE2D(_FxFBlendTex, sampler_FxFBlendTex, input.uv);
+                half4 idcol = SAMPLE_TEXTURE2D(_FxFIDTex, sampler_FxFIDTex, input.uv);
                 int4  idValue = floor(idcol * 255);
                 int4  layerIndex = idValue >> 4;
                 int4  layerMask = idValue - layerIndex * 16;
-                half3 mixState = half3(layerMask.w, layerIndex.w, 1 - layerMask.w - layerIndex.w); // 只有一个通道为 1
+                half3 blendStruct = half3(layerMask.w, layerIndex.w, 1 - layerMask.w - layerIndex.w);
                 half3 weight_one = half3(1, 0, 0);
                 half3 weight_two = half3(1 - blendWeight.r, blendWeight.r, 0);
-                blendWeight.g = blendWeight.g * layerMask.r;
+                // blendWeight.g = blendWeight.g * layerMask.r;
                 half3 weight_three = half3(1 - blendWeight.g - blendWeight.b, blendWeight.g, blendWeight.b);
-                half3 weight = mixState.x * weight_one * _Channel.r + mixState.y * weight_two * _Channel.g + mixState.z * weight_three * _Channel.b;
+                half3 weight = blendStruct.x * weight_one * _Channel.r + blendStruct.y * weight_two * _Channel.g + blendStruct.z * weight_three * _Channel.b;
                 half3 finalColor = weight.x * pow(_TerrainColor[layerIndex.x], 2.2) + 
                     weight.y * pow(_TerrainColor[layerIndex.y], 2.2) + 
                     weight.z * pow(_TerrainColor[layerIndex.z], 2.2);
                 return float4(finalColor, 1) * (1 - (1 - layerMask.r) * _Channel.w);
-                // return float4(mixState, 1);
+                // return float4(blendStruct, 1);
             }
 
             ENDHLSL

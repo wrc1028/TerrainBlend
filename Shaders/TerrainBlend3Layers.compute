@@ -1,0 +1,84 @@
+﻿#pragma kernel FindTransformMask
+#pragma kernel TransformDimension
+#pragma kernel ThreeLayersBlend
+
+#include "TerrainUtils.hlsl"
+
+// 将混合往Alpha移动, ID值的Mask改为0: 
+// 1、去除相似边后, GB两层值大且ID相同的一方的混合值往Alpha扩展;
+// 2、从二层转换而来的第三层, 和原来的第三层有边缘上的冲突时, 将原始第三层的混合值往Alpha扩展
+[numthreads(8, 8, 1)] 
+void FindTransformMask (uint3 id : SV_DispatchThreadID)
+{
+    float4 sEdgeMask = _TextureInput01[id.xy];
+    float4 tEdgeMask = _TextureInput02[id.xy];
+    float4 alphaMask = _TextureInput03[id.xy];
+    if (alphaMask.a == 0 && (sEdgeMask.a > 0 || tEdgeMask.a > 0))
+    {
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+            float4 nearSEdgeMask = _TextureInput01[nearID];
+            float4 nearTEdgeMask = _TextureInput02[nearID];
+            // TODO: Fix
+            if (nearSEdgeMask.a == 0 && tEdgeMask.a == 0) continue;
+            if (sEdgeMask.r == nearTEdgeMask.r)
+                alphaMask.r = sEdgeMask.r;
+            else if (tEdgeMask.r == nearSEdgeMask.r)
+                alphaMask.r = tEdgeMask.r;
+        }
+        alphaMask.a = alphaMask.r > 0 ? 1 : 0;
+    }
+    Result01[id.xy] = alphaMask;
+}
+
+[numthreads(8, 8, 1)]
+void TransformDimension (uint3 id : SV_DispatchThreadID)
+{
+    // GB Mask ==> 0; 
+    float4 sEdgeMask = _TextureInput01[id.xy];
+    float4 tEdgeMask = _TextureInput02[id.xy];
+    float4 alphaMask = _TextureInput03[id.xy];
+    float4 rawIDValue = _TextureInput04[id.xy];
+    bool changeGChannel = false;
+    bool changeBChannel = false;
+    if (alphaMask.a == 1)
+    {
+        if (sEdgeMask.r == alphaMask.r)
+            changeGChannel = true;
+        if (tEdgeMask.r == alphaMask.r)
+            changeBChannel = true;
+    }
+    else
+    {
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+            float4 nearAlphaMask = _TextureInput03[nearID];
+            if (nearAlphaMask.a == 0) continue;
+            if (sEdgeMask.r == nearAlphaMask.r)
+                changeGChannel = true;
+            if (tEdgeMask.r == nearAlphaMask.r)
+                changeBChannel = true;
+        }
+    }
+    if (changeGChannel)
+    {
+        sEdgeMask = 0;
+        rawIDValue.g = Encode(Decode(rawIDValue.g), 0);
+    }
+    if (changeBChannel)
+    {
+        tEdgeMask = 0;
+        rawIDValue.b = Encode(Decode(rawIDValue.b), 0);
+    }
+    Result01[id.xy] = sEdgeMask;
+    Result02[id.xy] = tEdgeMask;
+    Result03[id.xy] = rawIDValue;
+}
+
+[numthreads(8, 8, 1)]
+void ThreeLayersBlend (uint3 id : SV_DispatchThreadID)
+{
+    
+}

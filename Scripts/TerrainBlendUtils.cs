@@ -8,85 +8,203 @@ using UnityEditor;
 
 namespace TerrainBlend16
 {
-    public class BlendShaderUtils
+    public class ShaderParams
     {
-        public static ComputeShader s_TerrainCS;
-        public static ComputeShader s_Shader
+        // TODO: 设置成通用: 以后擦除、双层混合和三层混合都用这个
+        public static int s_IndexRankID = Shader.PropertyToID("_IndexRank");
+        public static int s_ExtendParamsID = Shader.PropertyToID("_ExtendParams");
+        public static int s_TerrainParamsID = Shader.PropertyToID("_TerrainParams");
+        public static int s_RawIDMaskArrayID = Shader.PropertyToID("_RawIDMaskArray");
+        public static int s_AlphaTextureArrayID = Shader.PropertyToID("_AlphaTextureArray");
+
+        public static int s_TexInput1ID = Shader.PropertyToID("_TextureInput01");
+        public static int s_TexInput2ID = Shader.PropertyToID("_TextureInput02");
+        public static int s_TexInput3ID = Shader.PropertyToID("_TextureInput03");
+        public static int s_TexInput4ID = Shader.PropertyToID("_TextureInput04");
+        
+        public static int s_Result1ID = Shader.PropertyToID("Result01");
+        public static int s_Result2ID = Shader.PropertyToID("Result02");
+        public static int s_Result3ID = Shader.PropertyToID("Result03");
+    }
+    public class BlendCS2LUtils
+    {
+        public static ComputeShader s_Compute;
+        public static ComputeShader Compute
         {
             get 
             {
-                if (s_TerrainCS == null)
-                    s_TerrainCS = AssetDatabase.LoadAssetAtPath<ComputeShader>(
-                        $"{Utils.s_RootPath}/Shaders/TerrainBlend.compute");
-                return s_TerrainCS;
+                if (s_Compute == null)
+                    s_Compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(
+                        $"{Utils.s_RootPath}/Shaders/TerrainBlend2Layers.compute");
+                return s_Compute;
             }
         }
-        // params
-        public static int s_IndexRankID = Shader.PropertyToID("_IndexRank");
-        public static int s_TerrainParamsID = Shader.PropertyToID("_TerrainParams");
-        public static int s_ExtendParamsID = Shader.PropertyToID("_ExtendParams");
-
-        public static int s_AlphaTextureID = Shader.PropertyToID("_AlphaTexture");
-        public static int s_RawIDTextureID = Shader.PropertyToID("_RawIDTexture");
-        public static int s_TempTextureID = Shader.PropertyToID("_TempTexture");
-        public static int s_SecondLayerExtendID = Shader.PropertyToID("_SecondLayerExtend");
-        public static int s_ThirdLayerExtendID = Shader.PropertyToID("_ThirdLayerExtend");
-        public static int s_RawIDMaskArrayID = Shader.PropertyToID("_RawIDMaskArray");
-        public static int s_AlphaTextureArrayID = Shader.PropertyToID("_AlphaTextureArray");
-        public static int s_IDResultID = Shader.PropertyToID("IDResult");
-        public static int s_BlendResultID = Shader.PropertyToID("BlendResult");
         // kernels
-
-        public static int s_RawIDTextureKernel
+        public static int RawIDTexture
         {
             get { return GetKernel("RawIDTexture"); }
         }
-        public static int s_FindIDLayerEdgeKernel
+        public static int FindIDLayerEdge
         {
             get { return GetKernel("FindIDLayerEdge"); }
-        }
-        
-        public static int s_CheckLayerSimilarEdgeKernel
+        }     
+        public static int CheckLayerSimilarEdge
         {
             get { return GetKernel("CheckLayerSimilarEdge"); }
         }
-        public static int s_CheckExtendLayerEdgeKernel
+        public static int CheckExtendLayerEdge
         {
             get { return GetKernel("CheckExtendLayerEdge"); }
         }
-        public static int s_TransformDimensionKernel
+        public static int TransformDimension
         {
             get { return GetKernel("TransformDimension"); }
         }
-        public static int s_IDLayerExtendKernel
+        public static int IDLayerExtend
         {
             get { return GetKernel("IDLayerExtend"); }
         }
-        public static int s_DoubleLayersBlendKernel
+        public static int DoubleLayersBlend
         {
             get { return GetKernel("DoubleLayersBlend"); }
         }
-        public static int s_ThreeLayersBlendKernel
+        private static int GetKernel(string kernelName)
+        {
+            if (Compute == null) return -1;
+            else return Compute.FindKernel(kernelName);
+        }
+        // Dispatch
+        public static void DispatchRawIDTexture(TerrainBlendAsset asset, ComputeBuffer indexRankBuffer, ref RenderTexture rawIDTexture)
+        {
+            Compute.SetBuffer (RawIDTexture, ShaderParams.s_IndexRankID, indexRankBuffer);
+            Compute.SetTexture(RawIDTexture, ShaderParams.s_RawIDMaskArrayID, asset.m_RawIDMaskArray);
+            Compute.SetTexture(RawIDTexture, ShaderParams.s_AlphaTextureArrayID, asset.m_AlphaTextureArray);
+            Compute.SetTexture(RawIDTexture, ShaderParams.s_Result1ID, rawIDTexture);
+            Compute.Dispatch(RawIDTexture, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispatchFindIDLayerEdge(TerrainBlendAsset asset, Vector4 extendParams, RenderTexture rawIDTexture, ref RenderTexture rawIDEdgeTexture)
+        {
+            Compute.SetVector (ShaderParams.s_ExtendParamsID, extendParams);
+            Compute.SetTexture(FindIDLayerEdge, ShaderParams.s_TexInput1ID, rawIDTexture);
+            Compute.SetTexture(FindIDLayerEdge, ShaderParams.s_AlphaTextureArrayID, asset.m_AlphaTextureArray);
+            Compute.SetTexture(FindIDLayerEdge, ShaderParams.s_Result1ID, rawIDEdgeTexture);
+            Compute.Dispatch(FindIDLayerEdge, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispatchCheckLayerSimilarEdge(TerrainBlendAsset asset, ComputeBuffer indexRankBuffer, RenderTexture rawIDEdgeTexture, ref RenderTexture rawIDEdgeResult)
+        {
+            Compute.SetBuffer (CheckLayerSimilarEdge, ShaderParams.s_IndexRankID, indexRankBuffer);
+            Compute.SetTexture(CheckLayerSimilarEdge, ShaderParams.s_TexInput1ID, rawIDEdgeTexture);
+            Compute.SetTexture(CheckLayerSimilarEdge, ShaderParams.s_AlphaTextureArrayID, asset.m_AlphaTextureArray);
+            Compute.SetTexture(CheckLayerSimilarEdge, ShaderParams.s_Result1ID, rawIDEdgeResult);
+            Compute.Dispatch(CheckLayerSimilarEdge, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispatchCheckExtendLayerEdge(TerrainBlendAsset asset, RenderTexture extendEdgeTexture, RenderTexture layerExtend, ref RenderTexture extendEdgeResult)
+        {
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_TexInput1ID, extendEdgeTexture);
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_TexInput2ID, layerExtend);
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_Result1ID, extendEdgeResult);
+            Compute.Dispatch(CheckExtendLayerEdge, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispatchTransformDimension(TerrainBlendAsset asset, RenderTexture rawIDTexture, RenderTexture rawIDEdgeTexture, 
+            ref RenderTexture rawIDResult, ref RenderTexture rawIDEdgeResult)
+        {
+            Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput1ID, rawIDTexture);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput2ID, rawIDEdgeTexture);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_Result1ID, rawIDResult);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_Result2ID, rawIDEdgeResult);
+            Compute.Dispatch(TransformDimension, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispatchIDLayerExtend(TerrainBlendAsset asset, Vector4 extendParams, RenderTexture rawIDTexture, ref RenderTexture layerExtend)
+        {
+            Compute.SetVector (ShaderParams.s_ExtendParamsID, extendParams);
+            Compute.SetTexture(IDLayerExtend, ShaderParams.s_TexInput1ID, rawIDTexture);
+            Compute.SetTexture(IDLayerExtend, ShaderParams.s_AlphaTextureArrayID, asset.m_AlphaTextureArray);
+            Compute.SetTexture(IDLayerExtend, ShaderParams.s_Result1ID, layerExtend);
+            Compute.Dispatch(IDLayerExtend, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+    }
+    public class BlendCS3LUtils
+    {
+        private static ComputeShader s_Compute;
+        public static ComputeShader Compute
+        {
+            get 
+            {
+                if (s_Compute == null)
+                {
+                    s_Compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(
+                        $"{Utils.s_RootPath}/Shaders/TerrainBlend3Layers.compute");
+                    if (s_Compute == null)
+                        Debug.LogError("Not found Compute Shader!");
+                }
+                return s_Compute;
+            }
+        }
+        // kernels
+        public static int FindTransformMask
+        {
+            get { return GetKernel("FindTransformMask"); }
+        }
+        public static int TransformDimension
+        {
+            get { return GetKernel("TransformDimension"); }
+        }
+        public static int ThreeLayersBlend
         {
             get { return GetKernel("ThreeLayersBlend"); }
         }
         private static int GetKernel(string kernelName)
         {
-            if (s_Shader == null) return -1;
-            else return s_Shader.FindKernel(kernelName);
+            if (Compute == null)
+            {
+                Debug.LogError("Not found Compute Shader!");
+                return -1;
+            }
+            else return Compute.FindKernel(kernelName);
+        }
+        // Dispacth
+        private static int ThreadGroups(TerrainBlendAsset asset)
+        {
+            return Mathf.CeilToInt(asset.m_AlphamapResolution / 8);
+        }
+        public static void DispacthFindTransformMask(TerrainBlendAsset asset, RenderTexture secondLayerEdge, 
+            RenderTexture thirdLayerEdge, RenderTexture alphaMask, ref RenderTexture alphaMaskResult)
+        {
+            Compute.SetTexture(FindTransformMask, ShaderParams.s_TexInput1ID, secondLayerEdge);
+            Compute.SetTexture(FindTransformMask, ShaderParams.s_TexInput2ID, thirdLayerEdge);
+            Compute.SetTexture(FindTransformMask, ShaderParams.s_TexInput3ID, alphaMask);
+            Compute.SetTexture(FindTransformMask, ShaderParams.s_Result1ID, alphaMaskResult);
+            Compute.Dispatch(FindTransformMask, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispacthTransformDimension(TerrainBlendAsset asset, RenderTexture secondLayerEdge, 
+            RenderTexture thirdLayerEdge, RenderTexture alphaMask, RenderTexture rawIDTexture, 
+            ref RenderTexture secondLayerEdgeResult, ref RenderTexture thirdLayerEdgeResult, ref RenderTexture rawIDResult)
+        {
+            Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput1ID, secondLayerEdge);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput2ID, thirdLayerEdge);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput3ID, alphaMask);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput4ID, rawIDTexture);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_Result1ID, secondLayerEdgeResult);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_Result2ID, thirdLayerEdgeResult);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_Result3ID, rawIDResult);
+            Compute.Dispatch(TransformDimension, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispacthThreeLayersBlend()
+        {
+            
         }
     }
     public class EraseShaderUtils
     {
-        private static ComputeShader s_TerrainCS;
-        public static ComputeShader s_Shader
+        private static ComputeShader s_Compute;
+        public static ComputeShader Compute
         {
             get 
             {
-                if (s_TerrainCS == null)
-                    s_TerrainCS = AssetDatabase.LoadAssetAtPath<ComputeShader>(
+                if (s_Compute == null)
+                    s_Compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(
                         $"{Utils.s_RootPath}/Shaders/TerrainErase.compute");
-                return s_TerrainCS;
+                return s_Compute;
             }
         }
         // params
@@ -130,8 +248,8 @@ namespace TerrainBlend16
         }
         private static int GetKernel(string kernelName)
         {
-            if (s_Shader == null) return -1;
-            else return s_Shader.FindKernel(kernelName);
+            if (Compute == null) return -1;
+            else return Compute.FindKernel(kernelName);
         }
     }
     public class Utils
