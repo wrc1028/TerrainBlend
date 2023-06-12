@@ -189,9 +189,16 @@ namespace TerrainBlend16
             Compute.SetTexture(TransformDimension, ShaderParams.s_Result3ID, rawIDResult);
             Compute.Dispatch(TransformDimension, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
-        public static void DispacthThreeLayersBlend()
+        public static void DispacthThreeLayersBlend(TerrainBlendAsset asset, RenderTexture secondLayerEdgeD, 
+            RenderTexture secondLayerEdgeT, RenderTexture thirdLayerEdgeT, RenderTexture alphaMask, ref RenderTexture blendTexture)
         {
-            
+            Compute.SetTexture(ThreeLayersBlend, ShaderParams.s_TexInput1ID, secondLayerEdgeD);
+            Compute.SetTexture(ThreeLayersBlend, ShaderParams.s_TexInput2ID, secondLayerEdgeT);
+            Compute.SetTexture(ThreeLayersBlend, ShaderParams.s_TexInput3ID, thirdLayerEdgeT);
+            Compute.SetTexture(ThreeLayersBlend, ShaderParams.s_TexInput4ID, alphaMask);
+            Compute.SetTexture(ThreeLayersBlend, ShaderParams.s_AlphaTextureArrayID, asset.m_AlphaTextureArray);
+            Compute.SetTexture(ThreeLayersBlend, ShaderParams.s_Result1ID, blendTexture);
+            Compute.Dispatch(ThreeLayersBlend, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
     }
     public class EraseShaderUtils

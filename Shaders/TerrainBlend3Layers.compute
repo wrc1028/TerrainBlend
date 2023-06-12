@@ -27,7 +27,7 @@ void FindTransformMask (uint3 id : SV_DispatchThreadID)
             else if (tEdgeMask.r == nearSEdgeMask.r)
                 alphaMask.r = tEdgeMask.r;
         }
-        alphaMask.a = alphaMask.r > 0 ? 1 : 0;
+        alphaMask.a = alphaMask.r > 0 ? (16.0 / 255.0) : 0;
     }
     Result01[id.xy] = alphaMask;
 }
@@ -80,5 +80,32 @@ void TransformDimension (uint3 id : SV_DispatchThreadID)
 [numthreads(8, 8, 1)]
 void ThreeLayersBlend (uint3 id : SV_DispatchThreadID)
 {
-    
+    float4 secondLayerValueD = _TextureInput01[id.xy];
+    float4 secondLayerValueT = _TextureInput02[id.xy];
+    float4 thirdLayerValueT = _TextureInput03[id.xy];
+    float4 alphaLayerValue = _TextureInput04[id.xy];
+      
+    float4 threeAreaAlpha = 0;
+    uint3 texID = 0;
+    if (secondLayerValueD.b != 0)
+    {
+        texID = uint3(id.xy, Decode(secondLayerValueD.x));
+        threeAreaAlpha.x = _AlphaTextureArray[texID];
+    }
+    if (secondLayerValueT.a != 0)
+    {
+        texID = uint3(id.xy, Decode(secondLayerValueT.x));
+        threeAreaAlpha.y = _AlphaTextureArray[texID];
+    }
+    if (thirdLayerValueT.a != 0)
+    {
+        texID = uint3(id.xy, Decode(thirdLayerValueT.x));
+        threeAreaAlpha.z = _AlphaTextureArray[texID];
+    }
+    if (alphaLayerValue.a != 0)
+    {
+        texID = uint3(id.xy, Decode(alphaLayerValue.x));
+        threeAreaAlpha.w = _AlphaTextureArray[texID];
+    }
+    Result01[id.xy] = threeAreaAlpha;
 }

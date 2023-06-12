@@ -195,7 +195,6 @@ void RawIDMask (uint3 id : SV_DispatchThreadID)
 {
     float centerAlpha = _AlphaTexture[id.xy];
     bool signID = centerAlpha > 0;
-    // bool singleLayer = centerAlpha == 1;
     if (_EraseMask[id.xy].g == 0)
     {
         for (uint j = 0; j < 8; j++)
@@ -203,8 +202,6 @@ void RawIDMask (uint3 id : SV_DispatchThreadID)
             float nearAlpha = _AlphaTexture[GetNearID(id.xy, j)];
             if (!signID && nearAlpha > 0)
                 signID = true;
-            // if (singleLayer && (centerAlpha - nearAlpha > 0.8))
-            //     singleLayer = false;
         }
     }
     EraseMaskResult[id.xy] = float4(signID ? 1 : 0, 0, 0, 1);

@@ -18,61 +18,60 @@ namespace TerrainBlend16
             ComputeBuffer indexRank = CreateAndGetBuffer(m_TerrainAsset.m_CoverageIndexRank, sizeof(uint));
             RenderTexture rawIDTexture = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             BlendCS2LUtils.DispatchRawIDTexture(m_TerrainAsset, indexRank, ref rawIDTexture);
-            Utils.SaveRT2Texture(rawIDTexture, TextureFormat.RGBA32, GetTextureSavePath("1RawIDTexture.tga", m_TerrainAsset.m_TerrainName));
-            // 输出未向外扩展时IDTexture的双层混合结构中的混合层边界
+            Utils.SaveRT2Texture(rawIDTexture, TextureFormat.RGBA32, GetTextureSavePath("2Layers/1RawIDTexture.tga", m_TerrainAsset.m_TerrainName));
+            // 输出RawIDTexture的边界
             RenderTexture rawIDEdgeTexture = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             BlendCS2LUtils.DispatchFindIDLayerEdge(m_TerrainAsset, new Vector4(0, 1, 0, 2), rawIDTexture, ref rawIDEdgeTexture);
-            Utils.SaveRT2Texture(rawIDEdgeTexture, TextureFormat.RGBA32, GetTextureSavePath("2_1RawIDEdgeTexture.tga", m_TerrainAsset.m_TerrainName));
-            // 处理相交处: 边缘相似
-            RenderTexture rawIDEdgeTexture_01 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTexture, ref rawIDEdgeTexture_01);
-            Utils.SaveRT2Texture(rawIDEdgeTexture_01, TextureFormat.RGBA32, GetTextureSavePath("2_2RawIDEdgeTexture_01.tga", m_TerrainAsset.m_TerrainName));
-            // 处理相交处: 扩展维度
+            Utils.SaveRT2Texture(rawIDEdgeTexture, TextureFormat.RGBA32, GetTextureSavePath("2Layers/2RawIDEdgeTexture.tga", m_TerrainAsset.m_TerrainName));
+            // 处理相交处: 消除边缘混合值相似的Mask
+            RenderTexture rawIDEdgeTexture_Similar = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTexture, ref rawIDEdgeTexture_Similar);
+            Utils.SaveRT2Texture(rawIDEdgeTexture_Similar, TextureFormat.RGBA32, GetTextureSavePath("2Layers/3RawIDEdgeTexture_Similar.tga", m_TerrainAsset.m_TerrainName));
+            // 处理相交处: 将RG转移到GB通道上
             RenderTexture rawIDTexture_01 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            RenderTexture rawIDEdgeTexture_02 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchTransformDimension(m_TerrainAsset, rawIDTexture, rawIDEdgeTexture_01, ref rawIDTexture_01, ref rawIDEdgeTexture_02);
-            Utils.SaveRT2Texture(rawIDTexture_01, TextureFormat.RGBA32, GetTextureSavePath("2_3RawIDTexture_01.tga", m_TerrainAsset.m_TerrainName));
-            Utils.SaveRT2Texture(rawIDEdgeTexture_02, TextureFormat.RGBA32, GetTextureSavePath("2_3RawIDEdgeTexture_02.tga", m_TerrainAsset.m_TerrainName));
+            RenderTexture rawIDEdgeTexture_Dimension = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchTransformDimension(m_TerrainAsset, rawIDTexture, rawIDEdgeTexture_Similar, ref rawIDTexture_01, ref rawIDEdgeTexture_Dimension);
+            Utils.SaveRT2Texture(rawIDTexture_01, TextureFormat.RGBA32, GetTextureSavePath("2Layers/4RawIDTexture_01.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(rawIDEdgeTexture_Dimension, TextureFormat.RGBA32, GetTextureSavePath("2Layers/4rawIDEdgeTexture_Dimension.tga", m_TerrainAsset.m_TerrainName));
             // Layer扩展
-            RenderTexture secondLayerExtendD = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(0, 1, 0, 2), rawIDTexture_01, ref secondLayerExtendD);
-            Utils.SaveRT2Texture(secondLayerExtendD, TextureFormat.RGBA32, GetTextureSavePath("3_1ExtendSecondLayer.tga", m_TerrainAsset.m_TerrainName));
+            RenderTexture layerExtendDS = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(0, 1, 0, 2), rawIDTexture_01, ref layerExtendDS);
+            Utils.SaveRT2Texture(layerExtendDS, TextureFormat.RGBA32, GetTextureSavePath("2Layers/5LayerExtend.tga", m_TerrainAsset.m_TerrainName));
             // 寻找扩展层的边界
             RenderTexture extendEdgeTextureD = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchFindIDLayerEdge(m_TerrainAsset, new Vector4(1, 0, 0, 2), secondLayerExtendD, ref extendEdgeTextureD);
-            Utils.SaveRT2Texture(extendEdgeTextureD, TextureFormat.RGBA32, GetTextureSavePath("3_2ExtendEdgeTexture.tga", m_TerrainAsset.m_TerrainName));
+            BlendCS2LUtils.DispatchFindIDLayerEdge(m_TerrainAsset, new Vector4(1, 0, 0, 2), layerExtendDS, ref extendEdgeTextureD);
+            Utils.SaveRT2Texture(extendEdgeTextureD, TextureFormat.RGBA32, GetTextureSavePath("2Layers/6ExtendEdgeTexture.tga", m_TerrainAsset.m_TerrainName));
             // 处理相交处: 边缘相似
-            RenderTexture extendEdgeTextureD_01 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, extendEdgeTextureD, ref extendEdgeTextureD_01);
-            Utils.SaveRT2Texture(extendEdgeTextureD_01, TextureFormat.RGBA32, GetTextureSavePath("3_3ExtendEdgeTexture_01.tga", m_TerrainAsset.m_TerrainName));
+            RenderTexture extendEdgeTextureD_Similar = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, extendEdgeTextureD, ref extendEdgeTextureD_Similar);
+            Utils.SaveRT2Texture(extendEdgeTextureD_Similar, TextureFormat.RGBA32, GetTextureSavePath("2Layers/7ExtendEdgeTexture_Similar.tga", m_TerrainAsset.m_TerrainName));
             // 处理相交处: 处理用于扩展维度的Mask, 因为有些是正常向外扩展没有相交情况, 或者扩充的位置不位于双层结构内
-            RenderTexture extendEdgeTextureD_02 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchCheckExtendLayerEdge(m_TerrainAsset, extendEdgeTextureD_01, secondLayerExtendD, ref extendEdgeTextureD_02);
-            Utils.SaveRT2Texture(extendEdgeTextureD_02, TextureFormat.RGBA32, GetTextureSavePath("3_4ExtendEdgeTexture_02.tga", m_TerrainAsset.m_TerrainName));
+            RenderTexture extendEdgeTextureD_Mask = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchCheckExtendLayerEdge(m_TerrainAsset, extendEdgeTextureD_Similar, layerExtendDS, ref extendEdgeTextureD_Mask);
+            Utils.SaveRT2Texture(extendEdgeTextureD_Mask, TextureFormat.RGBA32, GetTextureSavePath("2Layers/8ExtendEdgeTexture_Mask.tga", m_TerrainAsset.m_TerrainName));
             // 处理相交处: 扩展维度
             RenderTexture rawIDTexture_02 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            RenderTexture extendEdgeTextureD_03 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchTransformDimension(m_TerrainAsset, rawIDTexture_01, extendEdgeTextureD_02, ref rawIDTexture_02, ref extendEdgeTextureD_03);
-            Utils.SaveRT2Texture(rawIDTexture_02, TextureFormat.RGBA32, GetTextureSavePath("3_5RawIDTexture_02.tga", m_TerrainAsset.m_TerrainName));
-            Utils.SaveRT2Texture(extendEdgeTextureD_03, TextureFormat.RGBA32, GetTextureSavePath("3_5ExtendEdgeTexture_03.tga", m_TerrainAsset.m_TerrainName));
+            RenderTexture extendEdgeTextureD_Dimension = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchTransformDimension(m_TerrainAsset, rawIDTexture_01, extendEdgeTextureD_Mask, ref rawIDTexture_02, ref extendEdgeTextureD_Dimension);
+            Utils.SaveRT2Texture(rawIDTexture_02, TextureFormat.RGBA32, GetTextureSavePath("2Layers/9RawIDTexture_02.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(extendEdgeTextureD_Dimension, TextureFormat.RGBA32, GetTextureSavePath("2Layers/9ExtendEdgeTexture_Dimension.tga", m_TerrainAsset.m_TerrainName));
             // 双层混合结构输出
-            BlendCS2LUtils.Compute.SetTexture(BlendCS2LUtils.DoubleLayersBlend, ShaderParams.s_TexInput1ID, extendEdgeTextureD_03);
-            BlendCS2LUtils.Compute.SetTexture(BlendCS2LUtils.DoubleLayersBlend, ShaderParams.s_AlphaTextureArrayID, m_TerrainAsset.m_AlphaTextureArray);
-            RenderTexture m_DoubleAreaBlend = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.Compute.SetTexture(BlendCS2LUtils.DoubleLayersBlend, ShaderParams.s_Result1ID, m_DoubleAreaBlend);
-            BlendCS2LUtils.Compute.Dispatch(BlendCS2LUtils.DoubleLayersBlend, m_TerrainAsset.m_ThreadGroups, m_TerrainAsset.m_ThreadGroups, 1);
-            Utils.SaveRT2Texture(m_DoubleAreaBlend, TextureFormat.RGBA32, GetTextureSavePath("11DoubleAreaBlend.tga", m_TerrainAsset.m_TerrainName));
+            // BlendCS2LUtils.Compute.SetTexture(BlendCS2LUtils.DoubleLayersBlend, ShaderParams.s_TexInput1ID, extendEdgeTextureD_03);
+            // BlendCS2LUtils.Compute.SetTexture(BlendCS2LUtils.DoubleLayersBlend, ShaderParams.s_AlphaTextureArrayID, m_TerrainAsset.m_AlphaTextureArray);
+            // RenderTexture m_DoubleAreaBlend = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            // BlendCS2LUtils.Compute.SetTexture(BlendCS2LUtils.DoubleLayersBlend, ShaderParams.s_Result1ID, m_DoubleAreaBlend);
+            // BlendCS2LUtils.Compute.Dispatch(BlendCS2LUtils.DoubleLayersBlend, m_TerrainAsset.m_ThreadGroups, m_TerrainAsset.m_ThreadGroups, 1);
+            // Utils.SaveRT2Texture(m_DoubleAreaBlend, TextureFormat.RGBA32, GetTextureSavePath("11DoubleAreaBlend.tga", m_TerrainAsset.m_TerrainName));
 
             rawIDEdgeTexture.Release();
-            rawIDEdgeTexture_01.Release();
-            rawIDEdgeTexture_02.Release();
+            rawIDEdgeTexture_Similar.Release();
+            rawIDEdgeTexture_Dimension.Release();
             rawIDTexture_01.Release();
 
-            secondLayerExtendD.Release();
+            layerExtendDS.Release();
             extendEdgeTextureD.Release();
-            extendEdgeTextureD_01.Release();
-            extendEdgeTextureD_02.Release();
-            extendEdgeTextureD_03.Release();
+            extendEdgeTextureD_Similar.Release();
+            extendEdgeTextureD_Mask.Release();
 #endregion
 #region 三层混合区域
             // 输出未向外扩展时IDTexture的三层混合结构中的混合层边界
@@ -131,6 +130,17 @@ namespace TerrainBlend16
             Utils.SaveRT2Texture(rawIDEdgeTextureT_03, TextureFormat.RGBA32, GetTextureSavePath("4_8RawIDEdgeTextureT.tga", m_TerrainAsset.m_TerrainName));
             Utils.SaveRT2Texture(rawIDTexture_04, TextureFormat.RGBA32, GetTextureSavePath("4_8RawIDTexture.tga", m_TerrainAsset.m_TerrainName));
             // 混合 R: extendEdgeTextureD_03 G: rawIDEdgeTextureS_03 B: rawIDEdgeTextureT_03 A: alphaMask_01
+            RenderTexture  alphaLayerExtendT = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(1, 0, 0, 2), alphaMask_01, ref alphaLayerExtendT);
+            RenderTexture  alphaLayerExtendT_2 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(1, 0, 0, 2), alphaLayerExtendT, ref alphaLayerExtendT_2);
+            RenderTexture  rawIDEdgeTextureS_04 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(0, 1, 0, 3), rawIDTexture_04, ref rawIDEdgeTextureS_04);
+            RenderTexture  rawIDEdgeTextureT_04 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(0, 0, 1, 3), rawIDTexture_04, ref rawIDEdgeTextureT_04);
+            RenderTexture blendTexture = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthThreeLayersBlend(m_TerrainAsset, extendEdgeTextureD_Dimension, rawIDEdgeTextureS_04, rawIDEdgeTextureT_04, alphaLayerExtendT_2, ref blendTexture);
+            Utils.SaveRT2Texture(blendTexture, TextureFormat.RGBA32, GetTextureSavePath("4_9BlendTexture.tga", m_TerrainAsset.m_TerrainName));
             
 #endregion
             rawIDEdgeTextureS.Release();
@@ -149,11 +159,12 @@ namespace TerrainBlend16
             alphaMask_01.Release();
             rawIDEdgeTextureS_03.Release();
             rawIDEdgeTextureT_03.Release();
+            extendEdgeTextureD_Dimension.Release();
             rawIDTexture_04.Release();
+            blendTexture.Release();
 
             rawIDTexture.Release();
             rawIDTexture_02.Release();
-            m_DoubleAreaBlend.Release();
             indexRank.Release();
             AssetDatabase.Refresh();
         }
