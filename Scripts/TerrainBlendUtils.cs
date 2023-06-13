@@ -25,6 +25,7 @@ namespace TerrainBlend16
         public static int s_Result1ID = Shader.PropertyToID("Result01");
         public static int s_Result2ID = Shader.PropertyToID("Result02");
         public static int s_Result3ID = Shader.PropertyToID("Result03");
+        public static int s_Result4ID = Shader.PropertyToID("Result04");
     }
     public class BlendCS2LUtils
     {
@@ -98,20 +99,19 @@ namespace TerrainBlend16
             Compute.SetTexture(CheckLayerSimilarEdge, ShaderParams.s_Result1ID, rawIDEdgeResult);
             Compute.Dispatch(CheckLayerSimilarEdge, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
-        public static void DispatchCheckExtendLayerEdge(TerrainBlendAsset asset, RenderTexture extendEdgeTexture, RenderTexture layerExtend, ref RenderTexture extendEdgeResult)
+        public static void DispatchCheckExtendLayerEdge(TerrainBlendAsset asset, RenderTexture rawIDTexture, RenderTexture layerExtend, ref RenderTexture extendEdgeResult)
         {
-            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_TexInput1ID, extendEdgeTexture);
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_TexInput1ID, rawIDTexture);
             Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_TexInput2ID, layerExtend);
             Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_Result1ID, extendEdgeResult);
             Compute.Dispatch(CheckExtendLayerEdge, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
         public static void DispatchTransformDimension(TerrainBlendAsset asset, RenderTexture rawIDTexture, RenderTexture rawIDEdgeTexture, 
-            ref RenderTexture rawIDResult, ref RenderTexture rawIDEdgeResult)
+            ref RenderTexture rawIDResult)
         {
             Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput1ID, rawIDTexture);
             Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput2ID, rawIDEdgeTexture);
             Compute.SetTexture(TransformDimension, ShaderParams.s_Result1ID, rawIDResult);
-            Compute.SetTexture(TransformDimension, ShaderParams.s_Result2ID, rawIDEdgeResult);
             Compute.Dispatch(TransformDimension, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
         public static void DispatchIDLayerExtend(TerrainBlendAsset asset, Vector4 extendParams, RenderTexture rawIDTexture, ref RenderTexture layerExtend)
@@ -149,6 +149,14 @@ namespace TerrainBlend16
         {
             get { return GetKernel("TransformDimension"); }
         }
+        public static int CheckExtendLayerEdge
+        {
+            get { return GetKernel("CheckExtendLayerEdge"); }
+        }
+        public static int CombineAlphaMask
+        {
+            get { return GetKernel("CombineAlphaMask"); }
+        }
         public static int ThreeLayersBlend
         {
             get { return GetKernel("ThreeLayersBlend"); }
@@ -168,17 +176,17 @@ namespace TerrainBlend16
             return Mathf.CeilToInt(asset.m_AlphamapResolution / 8);
         }
         public static void DispacthFindTransformMask(TerrainBlendAsset asset, RenderTexture secondLayerEdge, 
-            RenderTexture thirdLayerEdge, RenderTexture alphaMask, ref RenderTexture alphaMaskResult)
+            RenderTexture thirdLayerEdge, RenderTexture rawIDTexture, ref RenderTexture alphaMask)
         {
             Compute.SetTexture(FindTransformMask, ShaderParams.s_TexInput1ID, secondLayerEdge);
             Compute.SetTexture(FindTransformMask, ShaderParams.s_TexInput2ID, thirdLayerEdge);
-            Compute.SetTexture(FindTransformMask, ShaderParams.s_TexInput3ID, alphaMask);
-            Compute.SetTexture(FindTransformMask, ShaderParams.s_Result1ID, alphaMaskResult);
+            Compute.SetTexture(FindTransformMask, ShaderParams.s_TexInput3ID, rawIDTexture);
+            Compute.SetTexture(FindTransformMask, ShaderParams.s_Result1ID, alphaMask);
             Compute.Dispatch(FindTransformMask, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
         public static void DispacthTransformDimension(TerrainBlendAsset asset, RenderTexture secondLayerEdge, 
             RenderTexture thirdLayerEdge, RenderTexture alphaMask, RenderTexture rawIDTexture, 
-            ref RenderTexture secondLayerEdgeResult, ref RenderTexture thirdLayerEdgeResult, ref RenderTexture rawIDResult)
+            ref RenderTexture secondLayerEdgeResult, ref RenderTexture thirdLayerEdgeResult, ref RenderTexture rawIDResult, ref RenderTexture alphaMaskResult)
         {
             Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput1ID, secondLayerEdge);
             Compute.SetTexture(TransformDimension, ShaderParams.s_TexInput2ID, thirdLayerEdge);
@@ -187,7 +195,25 @@ namespace TerrainBlend16
             Compute.SetTexture(TransformDimension, ShaderParams.s_Result1ID, secondLayerEdgeResult);
             Compute.SetTexture(TransformDimension, ShaderParams.s_Result2ID, thirdLayerEdgeResult);
             Compute.SetTexture(TransformDimension, ShaderParams.s_Result3ID, rawIDResult);
+            Compute.SetTexture(TransformDimension, ShaderParams.s_Result4ID, alphaMaskResult);
             Compute.Dispatch(TransformDimension, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispacthCheckExtendLayerEdge(TerrainBlendAsset asset, RenderTexture layerExtendS, RenderTexture layerExtendT, RenderTexture alphaMask, 
+            ref RenderTexture layerExtendSResult, ref RenderTexture layerExtendTResult, ref RenderTexture alphaMaskResult)
+        {
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_TexInput1ID, layerExtendS);
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_TexInput2ID, layerExtendT);
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_TexInput3ID, alphaMask);
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_Result1ID, layerExtendSResult);
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_Result2ID, layerExtendTResult);
+            Compute.SetTexture(CheckExtendLayerEdge, ShaderParams.s_Result3ID, alphaMaskResult);
+            Compute.Dispatch(CheckExtendLayerEdge, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+        }
+        public static void DispacthCombineAlphaMask(TerrainBlendAsset asset, RenderTexture alphaMask, ref RenderTexture alphaMaskResult)
+        {
+            Compute.SetTexture(CombineAlphaMask, ShaderParams.s_TexInput1ID, alphaMask);
+            Compute.SetTexture(CombineAlphaMask, ShaderParams.s_Result1ID, alphaMaskResult);
+            Compute.Dispatch(CombineAlphaMask, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
         public static void DispacthThreeLayersBlend(TerrainBlendAsset asset, RenderTexture secondLayerEdgeD, 
             RenderTexture secondLayerEdgeT, RenderTexture thirdLayerEdgeT, RenderTexture alphaMask, ref RenderTexture blendTexture)

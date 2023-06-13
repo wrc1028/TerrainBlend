@@ -1,37 +1,56 @@
 ﻿#pragma kernel FindTransformMask
 #pragma kernel TransformDimension
+#pragma kernel CheckExtendLayerEdge
+#pragma kernel CombineAlphaMask
 #pragma kernel ThreeLayersBlend
 
 #include "TerrainUtils.hlsl"
 
-// 将混合往Alpha移动, ID值的Mask改为0: 
-// 1、去除相似边后, GB两层值大且ID相同的一方的混合值往Alpha扩展;
-// 2、从二层转换而来的第三层, 和原来的第三层有边缘上的冲突时, 将原始第三层的混合值往Alpha扩展
+// 三层混合结构分为
+// 1、特殊的三层混合结构, 二层转三层
+// 2、原始的三层结构
 [numthreads(8, 8, 1)] 
 void FindTransformMask (uint3 id : SV_DispatchThreadID)
 {
     float4 sEdgeMask = _TextureInput01[id.xy];
     float4 tEdgeMask = _TextureInput02[id.xy];
-    float4 alphaMask = _TextureInput03[id.xy];
-    if (alphaMask.a == 0 && (sEdgeMask.a > 0 || tEdgeMask.a > 0))
+    float4 rawIDValue = _TextureInput03[id.xy];
+    float4 alphaMask = 0;
+    uint2 idMask = DecodeMask(rawIDValue.r);
+    if ((sEdgeMask.a > 0 || tEdgeMask.a > 0))
     {
         for (uint i = 0; i < 8; i++)
         {
             uint2 nearID = GetNearID(id.xy, i);
             float4 nearSEdgeMask = _TextureInput01[nearID];
             float4 nearTEdgeMask = _TextureInput02[nearID];
-            // TODO: Fix
-            if (nearSEdgeMask.a == 0 && tEdgeMask.a == 0) continue;
-            if (sEdgeMask.r == nearTEdgeMask.r)
-                alphaMask.r = sEdgeMask.r;
-            else if (tEdgeMask.r == nearSEdgeMask.r)
-                alphaMask.r = tEdgeMask.r;
+            float4 nearRawIDValue = _TextureInput03[nearID];
+            uint2 nearIDMask = DecodeMask(rawIDValue.r);
+            if (nearRawIDValue.a != 0) continue;
+            if (nearSEdgeMask.a > 0)
+            {
+                if (rawIDValue.g == nearRawIDValue.b)
+                    alphaMask.r = rawIDValue.g;
+                else if (rawIDValue.b == nearRawIDValue.g)
+                    alphaMask.r = rawIDValue.b;
+            }
+            if (nearTEdgeMask.a > 0)
+            {
+                if (rawIDValue.g == nearRawIDValue.b)
+                    alphaMask.g = rawIDValue.g;
+                else if (rawIDValue.b == nearRawIDValue.g)
+                    alphaMask.g = rawIDValue.b;
+            }
+            
         }
-        alphaMask.a = alphaMask.r > 0 ? (16.0 / 255.0) : 0;
+        alphaMask.b = alphaMask.r > 0 ? 1 : 0.66;
+        alphaMask.a = alphaMask.g > 0 ? 1 : 0.66;
     }
     Result01[id.xy] = alphaMask;
 }
 
+// 根据Alpha转移, 对RawIDEdgeTexture进行操作并输出
+// 后续对RawIDEdgeTexture进行扩展, 因为涉及
 [numthreads(8, 8, 1)]
 void TransformDimension (uint3 id : SV_DispatchThreadID)
 {
@@ -40,41 +59,173 @@ void TransformDimension (uint3 id : SV_DispatchThreadID)
     float4 tEdgeMask = _TextureInput02[id.xy];
     float4 alphaMask = _TextureInput03[id.xy];
     float4 rawIDValue = _TextureInput04[id.xy];
+    float4 alphaValue = 0;
     bool changeGChannel = false;
     bool changeBChannel = false;
-    if (alphaMask.a == 1)
+    if (alphaMask.b == 1 && alphaMask.a == 1)
     {
         if (sEdgeMask.r == alphaMask.r)
+        {
+            alphaValue.r = sEdgeMask.r;
             changeGChannel = true;
-        if (tEdgeMask.r == alphaMask.r)
+        }
+        if (tEdgeMask.r == alphaMask.g)
+        {
+            alphaValue.g = tEdgeMask.r;
             changeBChannel = true;
+        }
     }
     else
     {
-        for (uint i = 0; i < 8; i++)
+        if (alphaMask.b == 1 && sEdgeMask.r == alphaMask.r)
         {
-            uint2 nearID = GetNearID(id.xy, i);
-            float4 nearAlphaMask = _TextureInput03[nearID];
-            if (nearAlphaMask.a == 0) continue;
-            if (sEdgeMask.r == nearAlphaMask.r)
-                changeGChannel = true;
-            if (tEdgeMask.r == nearAlphaMask.r)
-                changeBChannel = true;
+            alphaValue.r = sEdgeMask.r;
+            changeGChannel = true;
+        }
+        else if (alphaMask.a == 1 && tEdgeMask.r == alphaMask.g)
+        {
+            alphaValue.g = tEdgeMask.r;
+            changeBChannel = true;
+        }
+        else
+        {
+            for (uint i = 0; i < 8; i++)
+            {
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearAlphaMask = _TextureInput03[nearID];
+                if (nearAlphaMask.a == 0) continue;
+                if (sEdgeMask.r == nearAlphaMask.r)
+                {
+                    alphaValue.r = sEdgeMask.r;
+                    changeGChannel = true;
+                }
+                if (tEdgeMask.r == nearAlphaMask.g)
+                {
+                    alphaValue.g = tEdgeMask.r;
+                    changeBChannel = true;
+                }
+            }
         }
     }
+    
     if (changeGChannel)
     {
         sEdgeMask = 0;
         rawIDValue.g = Encode(Decode(rawIDValue.g), 0);
+        // rawIDValue.a = 1;
     }
     if (changeBChannel)
     {
         tEdgeMask = 0;
         rawIDValue.b = Encode(Decode(rawIDValue.b), 0);
+        // rawIDValue.a = 1;
     }
+    alphaValue.b = alphaValue.r > 0 ? 1 : 0;
+    alphaValue.a = alphaValue.g > 0 ? 1 : 0;
+
     Result01[id.xy] = sEdgeMask;
     Result02[id.xy] = tEdgeMask;
     Result03[id.xy] = rawIDValue;
+    Result04[id.xy] = alphaValue;
+}
+
+// 处理扩展后相交的像素, 想和AlphaMask对比, 再进行转移(本身以及其周围)
+[numthreads(8, 8, 1)]
+void CheckExtendLayerEdge (uint3 id : SV_DispatchThreadID)
+{
+    float4 extendLayerS = _TextureInput01[id.xy];
+    float4 extendLayerT = _TextureInput02[id.xy];
+    float4 alphaMask = _TextureInput03[id.xy];
+    bool isTransform = false;
+    if (extendLayerS.y > 0)
+    {
+        if (alphaMask.z == 1 && extendLayerS.x == alphaMask.x)
+        {
+            extendLayerS.x = extendLayerS.y;
+            isTransform = true;
+        }
+        else if (alphaMask.z == 0)
+        {
+            for (uint i = 0; i < 8; i++)
+            {
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearAlphaMask = _TextureInput03[nearID];
+                if (nearAlphaMask.z == 0) continue;
+                if (extendLayerS.x == nearAlphaMask.x)
+                {
+                    alphaMask.x = extendLayerS.x;
+                    alphaMask.z = 1;
+                    extendLayerS.x = extendLayerS.y;
+                    isTransform = true;
+                }
+                else if (extendLayerS.y = nearAlphaMask.x)
+                {
+                    alphaMask.x = extendLayerS.y;
+                    alphaMask.z = 1;
+                    isTransform = true;
+                }
+            }
+        }
+        if (!isTransform)
+        {
+            alphaMask.x = extendLayerS.y;
+            alphaMask.z = 1;
+        }
+    }
+    if (extendLayerT.y > 0)
+    {
+        isTransform = false;
+        if (alphaMask.a == 1 && extendLayerT.x == alphaMask.y)
+        {
+            extendLayerT.x = extendLayerT.y;
+            isTransform = true;
+        }
+        else if (alphaMask.a == 0)
+        {
+            for (uint i = 0; i < 8; i++)
+            {
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearAlphaMask = _TextureInput03[nearID];
+                if (nearAlphaMask.a == 0) continue;
+                if (extendLayerT.x == nearAlphaMask.y)
+                {
+                    alphaMask.y = extendLayerT.x;
+                    alphaMask.a = 1;
+                    extendLayerT.x = extendLayerT.y;
+                    isTransform = true;
+                }
+                else if (extendLayerT.y = nearAlphaMask.y)
+                {
+                    alphaMask.y = extendLayerT.y;
+                    alphaMask.a = 1;
+                    isTransform = true;
+                }
+            }
+        }
+        if (!isTransform)
+        {
+            alphaMask.y = extendLayerT.y;
+            alphaMask.a = 1;
+        }
+    }
+    Result01[id.xy] = extendLayerS;
+    Result02[id.xy] = extendLayerT;
+    Result03[id.xy] = alphaMask;
+}
+
+// 合并AlphaMask
+[numthreads(8, 8, 1)]
+void CombineAlphaMask (uint3 id : SV_DispatchThreadID)
+{
+    float4 alphaMask = _TextureInput01[id.xy];
+    float4 alphaValue = 0;
+    if (alphaMask.z == 1)
+        alphaValue.r = alphaMask.r;
+    if (alphaMask.a == 1)
+        alphaValue.r = alphaMask.g;
+    
+    alphaValue.b = alphaValue.r > 0 ? 1 : 0;
+    Result01[id.xy] = alphaValue;
 }
 
 [numthreads(8, 8, 1)]
@@ -87,7 +238,7 @@ void ThreeLayersBlend (uint3 id : SV_DispatchThreadID)
       
     float4 threeAreaAlpha = 0;
     uint3 texID = 0;
-    if (secondLayerValueD.b != 0)
+    if (secondLayerValueD.a != 0)
     {
         texID = uint3(id.xy, Decode(secondLayerValueD.x));
         threeAreaAlpha.x = _AlphaTextureArray[texID];

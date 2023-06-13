@@ -117,6 +117,8 @@ namespace TerrainBlend16
             m_AlphaTexturePaths = new List<string>();
             m_RawIDMaskPaths = new List<string>();
             int threadGroups = Mathf.CeilToInt(m_AlphamapResolution / 8);
+            // 先向外扩展
+            
             // 获得擦除的Mask
             EraseShaderUtils.Compute.SetInts(EraseShaderUtils.s_TerrainParamsID, m_LayersCount, m_AlphamapResolution, 0);
             EraseShaderUtils.Compute.SetTexture(EraseShaderUtils.s_EraseMaskKernel, EraseShaderUtils.s_AlphaTextureArrayID, m_OriginAlphaArray);

@@ -18,6 +18,7 @@ Texture2D<float4> _TextureInput04;
 RWTexture2D<float4> Result01;
 RWTexture2D<float4> Result02;
 RWTexture2D<float4> Result03;
+RWTexture2D<float4> Result04;
 
 static const int2 _Offset[8] = 
 {
