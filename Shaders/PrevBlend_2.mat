@@ -24,7 +24,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFIDTex:
-        m_Texture: {fileID: 2800000, guid: 44886a30439187a4c9a5b2374cacffaf, type: 3}
+        m_Texture: {fileID: 2800000, guid: c762b17cf1a22a04d88b210825f300d7, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Mask:
@@ -33,4 +33,4 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Floats: []
     m_Colors:
-    - _Channel: {r: 1, g: 1, b: 0, a: 0}
+    - _Channel: {r: 1, g: 1, b: 1, a: 0}

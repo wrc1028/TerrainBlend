@@ -20,11 +20,11 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _FxFBlendTex:
-        m_Texture: {fileID: 2800000, guid: 726794620279f7047b499e385d0cca0f, type: 3}
+        m_Texture: {fileID: 2800000, guid: 6815ea80264f77d4e8d72f9bd40b86e1, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFIDTex:
-        m_Texture: {fileID: 2800000, guid: 07d55b288c6eac14c8cc606b60860a40, type: 3}
+        m_Texture: {fileID: 2800000, guid: ee1ae9452cf8dcb4ab81e08da9b44cda, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Mask:

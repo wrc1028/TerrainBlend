@@ -4,7 +4,6 @@
 #pragma kernel AppendIsolatedPoint
 #pragma kernel BlurredEraseEdge
 #pragma kernel RawIDMask
-#pragma kernel AlphaNormalize
 // input
 uint3 _TerrainParams;
 #define _LayerCount _TerrainParams.x // 当前地形层的索引
@@ -15,11 +14,13 @@ Texture2D<float4> _EraseMask;        // R: 多层区域的Mask; G: 两层以上�
 Texture2D<float> _AlphaTexture;
 Texture2D<float> _AlphaNormalize;
 Texture2DArray<float> _AlphaTextureArray;
+Texture2DArray<float4> _RawIDMaskArray;
 // result
 RWTexture2D<float4> EraseMaskResult;
 RWTexture2D<float> AlphaTextureResult;
 RWTexture2D<float> AlphaNormalizeResult;
 RWTexture2DArray<float> AlphaTextureArrayResult;
+RWTexture2DArray<float4> RawIDMaskArrayResult;
 
 static const int2 _Offset[8] = 
 {
@@ -33,15 +34,15 @@ static const int2 _CrossOffset[4] =
 };
 uint2 GetNearID(uint2 id, uint index)
 {
-    return clamp(id + _Offset[index], 0, _Resolution - 1);
+    return clamp(id + _Offset[index], 0, _Resolution);
 }
 uint2 GetNeraID(uint2 id, int2 offset)
 {
-    return clamp(id + offset, 0, _Resolution - 1);
+    return clamp(id + offset, 0, _Resolution);
 }
 uint2 GetCrossID(uint2 id, uint index)
 {
-    return clamp(id + _CrossOffset[index], 0, _Resolution - 1);
+    return clamp(id + _CrossOffset[index], 0, _Resolution);
 }
 
 [numthreads(8, 8, 1)]
@@ -51,11 +52,11 @@ void EraseMask (uint3 id : SV_DispatchThreadID)
     for (uint i = 0; i < _LayerCount; i++)
     {
         uint3 texID = uint3(id.xy, i);
-        if (_AlphaTextureArray[texID] > 0)
+        if (_RawIDMaskArray[texID].r == 1)
             validLayerCount ++;
     }
     float resultR = validLayerCount > 3 ? 1 : 0;
-    float resultG = validLayerCount > 2 ? 1 : 0;
+    float resultG = validLayerCount == 3 ? 1 : 0;
     EraseMaskResult[id.xy] = float4(resultR, resultG, 0, 1);
 }
 
@@ -67,7 +68,7 @@ void EraseLayer (uint3 id : SV_DispatchThreadID)
         for (uint j = 0; j < _LayerCount; j++)
         {
             uint3 texID = uint3(id.xy, j);
-            AlphaTextureArrayResult[texID] = _AlphaTextureArray[texID];
+            RawIDMaskArrayResult[texID] = _RawIDMaskArray[texID];
         }
     }
     else
@@ -79,21 +80,21 @@ void EraseLayer (uint3 id : SV_DispatchThreadID)
         for (uint k = 0; k < _LayerCount; k++)
         {
             texID = uint3(id.xy, k);
-            float alpha = _AlphaTextureArray[texID];
-            if (alpha == 0) continue;
-            if (alpha > alphas.x)
+            float4 rawIDMask = _RawIDMaskArray[texID];
+            if (rawIDMask.x == 0) continue;
+            if (rawIDMask.y > alphas.x)
             {
-                alphas = float3(alpha, alphas.xy);
+                alphas = float3(rawIDMask.y, alphas.xy);
                 retainIds = uint3(k, retainIds.xy);
             }
-            else if (alpha > alphas.y)
+            else if (rawIDMask.y > alphas.y)
             {
-                alphas.yz = float2(alpha, alphas.y);
+                alphas.yz = float2(rawIDMask.y, alphas.y);
                 retainIds.yz = uint2(k, retainIds.y);
             }
-            else if (alpha > alphas.z)
+            else if (rawIDMask.y > alphas.z)
             {
-                alphas.z = alpha;
+                alphas.z = rawIDMask.y;
                 retainIds.z = k;
             }
             else continue;
@@ -102,14 +103,15 @@ void EraseLayer (uint3 id : SV_DispatchThreadID)
         for (uint m = 0; m < _LayerCount; m++)
         {
             texID = uint3(id.xy, m);
+            float4 rawIDMask = _RawIDMaskArray[texID];
             if (retainIds.x == m)
-                AlphaTextureArrayResult[texID] = alphas.x;
+                RawIDMaskArrayResult[texID] = float4(1, alphas.x, 0, 1);
             else if (retainIds.y == m)
-                AlphaTextureArrayResult[texID] = alphas.y;
+                RawIDMaskArrayResult[texID] = float4(1, alphas.y, 0, 1);
             else if (retainIds.z == m)
-                AlphaTextureArrayResult[texID] = alphas.z;
+                RawIDMaskArrayResult[texID] = float4(1, alphas.z, 0, 1);
             else
-                AlphaTextureArrayResult[texID] = 0;
+                RawIDMaskArrayResult[texID] = float4(rawIDMask.r, 0, 1, 1);
         }
     }
 }
@@ -163,63 +165,51 @@ void AppendIsolatedPoint (uint3 id : SV_DispatchThreadID)
     AlphaTextureResult[id.xy] = centerAlpha;
 }
 
-// 虚化擦除后产生的不连续过渡
+// 虚化擦除后产生的不连续过渡 _RawIDMaskArray RawIDMaskArrayResult
 [numthreads(8, 8, 1)]
 void BlurredEraseEdge (uint3 id : SV_DispatchThreadID)
 {
-    float centerAlpha = _AlphaTexture[id.xy];
-    if (centerAlpha > 0)
+    float alphaSum = 0;
+    for (uint i = 0; i < _LayerCount; i++)
     {
-        float minDistance = 1000;
-        for (int j = -6; j < 7; j++)
+        uint3 texID = uint3(id.xy, i);
+        float4 rawIDMask = _RawIDMaskArray[texID];
+        if (rawIDMask.b == 1)
+            rawIDMask.r = 0;
+        if (rawIDMask.b == 0 && rawIDMask.r == 1)
         {
-            for (int k = -6; k < 7; k++)
+            for (uint j = 0; j < 8; j++)
             {
-                uint2 nearID = GetNeraID(id.xy, int2(j, k));
-                if (_EraseMask[nearID].r == 0) continue;
-                float nearAlpha = _AlphaTexture[nearID];
-                if (nearAlpha == 0)
-                    minDistance = min(minDistance, max(0, sqrt(j * j + k * k) - 1.5));
+                uint3 nearTexID = uint3(GetNearID(id.xy, j), i);
+                float4 nearRawIDMask = _RawIDMaskArray[nearTexID];
+                if (nearRawIDMask.b == 1)
+                {
+                    rawIDMask.g = 0;
+                    rawIDMask.a = 0;
+                    break;
+                }
             }
         }
-        if (minDistance != 1000)
-            centerAlpha = centerAlpha * min(1, minDistance * 0.2);
+        alphaSum += rawIDMask.g;
+        RawIDMaskArrayResult[texID] = rawIDMask;
+        AlphaTextureArrayResult[texID] = rawIDMask.g;
     }
-    AlphaTextureResult[id.xy] = centerAlpha;
-    AlphaNormalizeResult[id.xy] = _AlphaNormalize[id.xy] + centerAlpha;
+    AlphaNormalizeResult[id.xy] = alphaSum;
 }
-
 // 输出RawIDMask
 [numthreads(8, 8, 1)]
 void RawIDMask (uint3 id : SV_DispatchThreadID)
 {
     float centerAlpha = _AlphaTexture[id.xy];
     bool signID = centerAlpha > 0;
-    if (_EraseMask[id.xy].g == 0)
+    if (!signID)
     {
-        for (uint j = 0; j < 8; j++)
+        for (uint i = 0; i < 8; i++)
         {
-            float nearAlpha = _AlphaTexture[GetNearID(id.xy, j)];
+            float nearAlpha = _AlphaTexture[GetNearID(id.xy, i)];
             if (!signID && nearAlpha > 0)
                 signID = true;
         }
     }
-    EraseMaskResult[id.xy] = float4(signID ? 1 : 0, 0, 0, 1);
-    AlphaTextureResult[id.xy] = centerAlpha / _AlphaNormalize[id.xy];
-}
-
-// 归一化 
-[numthreads(8, 8, 1)]
-void AlphaNormalize (uint3 id : SV_DispatchThreadID)
-{
-    float alphaSum = 0;
-    for (uint i = 0; i < _LayerCount; i++)
-    {
-        alphaSum += _AlphaTextureArray[uint3(id.xy, i)];
-    }
-    for (uint j = 0; j < _LayerCount; j++)
-    {
-        uint3 texID = uint3(id.xy, j);
-        AlphaTextureArrayResult[texID] = _AlphaTextureArray[texID] / max(0.3, alphaSum);
-    }
+    EraseMaskResult[id.xy] = float4(signID ? 1 : 0, centerAlpha, 0, 1);
 }

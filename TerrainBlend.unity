@@ -229,7 +229,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_TerrainAsset: {fileID: 11400000, guid: 3fc02835413e5b540a18167c94ac0a1d, type: 2}
-  intValue: 0
 --- !u!1 &903715609
 GameObject:
   m_ObjectHideFlags: 0
@@ -429,8 +428,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b78a853ffd3631242b84c4f68464ebe4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_TerrainAsset: {fileID: 11400000, guid: 12515c9c4586f1145825fe436b188df4, type: 2}
-  intValue: 0
+  m_TerrainAsset: {fileID: 11400000, guid: 2f6e21cbced754d4797732ad0e034e86, type: 2}
 --- !u!64 &1432368651
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -596,7 +594,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_TerrainAsset: {fileID: 11400000, guid: 3fc02835413e5b540a18167c94ac0a1d, type: 2}
-  intValue: 193
 --- !u!1 &2064243905
 GameObject:
   m_ObjectHideFlags: 0

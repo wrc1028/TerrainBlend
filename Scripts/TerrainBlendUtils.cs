@@ -246,38 +246,65 @@ namespace TerrainBlend16
         public static int s_AlphaTextureID = Shader.PropertyToID("_AlphaTexture");
         public static int s_AlphaNormalizeID = Shader.PropertyToID("_AlphaNormalize");
         public static int s_AlphaTextureArrayID = Shader.PropertyToID("_AlphaTextureArray");
+        public static int s_RawIDMaskArrayID = Shader.PropertyToID("_RawIDMaskArray");
+
+
         public static int s_EraseMaskResultID = Shader.PropertyToID("EraseMaskResult");
         public static int s_AlphaTextureResultID = Shader.PropertyToID("AlphaTextureResult");
         public static int s_AlphaNormalizeResultID = Shader.PropertyToID("AlphaNormalizeResult");
         public static int s_AlphaTextureArrayResultID = Shader.PropertyToID("AlphaTextureArrayResult");
+        public static int s_RawIDMaskArrayResultID = Shader.PropertyToID("RawIDMaskArrayResult");
         // kernel
-        public static int s_EraseMaskKernel
+        public static int EraseMask
         {
             get { return GetKernel("EraseMask"); }
         }
-        public static int s_EraseLayerKernel
+        public static int EraseLayer
         {
             get { return GetKernel("EraseLayer"); }
         }
-        public static int s_FindIsolatedPointKernel
+        public static int FindIsolatedPoint
         {
             get { return GetKernel("FindIsolatedPoint"); }
         }
-        public static int s_AppendIsolatedPointKernel
+        public static int AppendIsolatedPoint
         {
             get { return GetKernel("AppendIsolatedPoint"); }
         }
-        public static int s_BlurredEraseEdgeKernel
+        public static int BlurredEraseEdge
         {
             get { return GetKernel("BlurredEraseEdge"); }
         }
-        public static int s_RawIDMaskKernel
+        public static int RawIDMask
         {
             get { return GetKernel("RawIDMask"); }
         }
-        public static int s_AlphaNormalizeKernel
+        public static void DispacthEraseMask(int threadGroups, Texture2DArray rawIDMaskArray, ref RenderTexture eraseMask)
         {
-            get { return GetKernel("AlphaNormalize"); }
+            Compute.SetTexture(EraseMask, s_RawIDMaskArrayID, rawIDMaskArray);
+            Compute.SetTexture(EraseMask, s_EraseMaskResultID, eraseMask);
+            Compute.Dispatch(EraseMask, threadGroups, threadGroups, 1);
+        }
+        public static void DispacthEraseLayer(int threadGroups, RenderTexture eraseMask, Texture2DArray rawIDMaskArray, ref RenderTexture rawIDMaskArrayResult)
+        {
+            Compute.SetTexture(EraseLayer, s_EraseMaskID, eraseMask);
+            Compute.SetTexture(EraseLayer, s_RawIDMaskArrayID, rawIDMaskArray);
+            Compute.SetTexture(EraseLayer, s_RawIDMaskArrayResultID, rawIDMaskArrayResult);
+            Compute.Dispatch(EraseLayer, threadGroups, threadGroups, 1);
+        }
+        public static void DispacthBlurredEraseEdge(int threadGroups, RenderTexture rawIDMaskArray, ref RenderTexture rawIDMaskArrayResult, ref RenderTexture alphaTextureArray, ref RenderTexture alphaNormalize)
+        {
+            Compute.SetTexture(BlurredEraseEdge, s_RawIDMaskArrayID, rawIDMaskArray);
+            Compute.SetTexture(BlurredEraseEdge, s_RawIDMaskArrayResultID, rawIDMaskArrayResult);
+            Compute.SetTexture(BlurredEraseEdge, s_AlphaTextureArrayResultID, alphaTextureArray);
+            Compute.SetTexture(BlurredEraseEdge, s_AlphaNormalizeResultID, alphaNormalize);
+            Compute.Dispatch(BlurredEraseEdge, threadGroups, threadGroups, 1);
+        }
+        public static void DispacthRawIDMask(int threadGroups, Texture2D originAlpha, ref RenderTexture rawIDMask)
+        {
+            Compute.SetTexture(RawIDMask, s_AlphaTextureID, originAlpha);
+            Compute.SetTexture(RawIDMask, s_EraseMaskResultID, rawIDMask);
+            Compute.Dispatch(RawIDMask, threadGroups, threadGroups, 1);
         }
         private static int GetKernel(string kernelName)
         {
@@ -292,6 +319,7 @@ namespace TerrainBlend16
         {
             RenderTexture tempRT = new RenderTexture(size, size, 0, format, RenderTextureReadWrite.Linear);
             tempRT.filterMode = FilterMode.Point;
+            tempRT.wrapMode = TextureWrapMode.Clamp;
             tempRT.enableRandomWrite = true;
             tempRT.Create();
             return tempRT;
@@ -302,9 +330,19 @@ namespace TerrainBlend16
             tempRT.dimension = UnityEngine.Rendering.TextureDimension.Tex2DArray;
             tempRT.volumeDepth = slicesNum;
             tempRT.filterMode = FilterMode.Point;
+            tempRT.wrapMode = TextureWrapMode.Clamp;
             tempRT.enableRandomWrite = true;
             tempRT.Create();
             return tempRT;
+        }public static Texture2D GetTexture2D(RenderTexture rt, TextureFormat format)
+        {
+            Texture2D tex2D = new Texture2D(rt.width, rt.height, format, false, true);
+            RenderTexture prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            tex2D.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+            tex2D.Apply();
+            RenderTexture.active = prev;
+            return tex2D;
         }
         public static void SaveRT2Texture(RenderTexture rt, TextureFormat format, string savePath, bool isHDR = false)
         {
@@ -317,7 +355,6 @@ namespace TerrainBlend16
 
             SaveTexture(tex2D, savePath, isHDR);
         }
-
         public static void SaveTexture(Texture2D tex2D, string savePath, bool isHDR = false)
         {
             string directory = Path.GetDirectoryName(savePath);
