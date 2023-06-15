@@ -99,6 +99,7 @@ void CheckLayerSimilarEdge (uint3 id : SV_DispatchThreadID)
     bool canTransform = false;
     bool isSimilar = true;
     int centerIndex = Decode(edgeMask.x);
+    float2 similarRange = float2(0.2, 0.35);
     if (edgeMask.a == 1)
     {
         for (uint i = 0; i < 8; i++)
@@ -116,11 +117,12 @@ void CheckLayerSimilarEdge (uint3 id : SV_DispatchThreadID)
                     canTransform = true;
                 float centerNearAlpha = _AlphaTextureArray[uint3(nearID, Decode(edgeMask.r))];
                 // 当前位置的混合值和周围不同ID的混合值相比||周围某一点上的混合值和当前点ID对应的混合值做对比
-                if (abs(edgeMask.g - nearEdgeMask.g) > 0.2 || abs(centerNearAlpha - nearEdgeMask.g) > 0.35)
+                // TODO: 存在只满足后面的条件形成的孤立Mask, 需要单独处理
+                if ((abs(nearEdgeMask.g - edgeMask.g) > similarRange.x) || (abs(centerNearAlpha - nearEdgeMask.g) > similarRange.y))
                     isSimilar = false;
             }
         }
-        if (canTransform) edgeMask.a = 0.5;
+        if (canTransform && _LayerIndex == 0) edgeMask.a = 0.5;
         if (isSimilar) edgeMask.a = 0;
     }
     Result01[id.xy] = edgeMask;

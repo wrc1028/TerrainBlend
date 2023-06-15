@@ -8,7 +8,8 @@ namespace TerrainBlend16
     public class TerrainBlend : MonoBehaviour
     {
         public TerrainBlendAsset m_TerrainAsset;
-        public void Update2LayersBlend(bool outputDebugTexture, ref RenderTexture rawIDResult)
+        
+        public void Update2LayersBlend(bool outputDebugTexture, ref RenderTexture rawIDTexture, ref RenderTexture rawIDResult)
         {
             if (m_TerrainAsset == null || BlendCS2LUtils.Compute == null) return;
             m_TerrainAsset.m_ThreadGroups = Mathf.CeilToInt(m_TerrainAsset.m_AlphamapResolution / 8);
@@ -16,7 +17,6 @@ namespace TerrainBlend16
             ComputeBuffer indexRank = CreateAndGetBuffer(m_TerrainAsset.m_CoverageIndexRank, sizeof(uint));
 
             // 输出原始的IDTexture贴图
-            RenderTexture rawIDTexture = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             BlendCS2LUtils.DispatchRawIDTexture(m_TerrainAsset, indexRank, ref rawIDTexture);
             if (outputDebugTexture)
                 Utils.SaveRT2Texture(rawIDTexture, TextureFormat.RGBA32, GetTextureSavePath("2Layers/1RawIDTexture.tga", m_TerrainAsset.m_TerrainName));
@@ -70,7 +70,6 @@ namespace TerrainBlend16
                 doubleAreaBlend.Release();
             }
             // 第一阶段
-            rawIDTexture.Release();
             rawIDEdgeTexture.Release();
             rawIDEdgeTexture_Similar.Release();
             rawIDTexture_01.Release();
@@ -83,7 +82,7 @@ namespace TerrainBlend16
         {
             if (m_TerrainAsset == null || BlendCS2LUtils.Compute == null) return;
             m_TerrainAsset.m_ThreadGroups = Mathf.CeilToInt(m_TerrainAsset.m_AlphamapResolution / 8);
-            BlendCS2LUtils.Compute.SetInts(ShaderParams.s_TerrainParamsID, m_TerrainAsset.m_LayersCount, m_TerrainAsset.m_AlphamapResolution, 0);
+            BlendCS2LUtils.Compute.SetInts(ShaderParams.s_TerrainParamsID, m_TerrainAsset.m_LayersCount, m_TerrainAsset.m_AlphamapResolution, 1);
             ComputeBuffer indexRank = CreateAndGetBuffer(m_TerrainAsset.m_CoverageIndexRank, sizeof(uint));
 
             // 输出RawIDTexture的区域边界
@@ -102,7 +101,9 @@ namespace TerrainBlend16
             BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTextureT, ref rawIDEdgeTextureT_Similar);
             Utils.SaveRT2Texture(rawIDEdgeTextureT_Similar, TextureFormat.RGBA32, GetTextureSavePath("3Layers/2RawIDEdgeTextureT_Similar.tga", m_TerrainAsset.m_TerrainName));
             
-            // 在余下的Mask中, 输出第二层、三层中都存在的层的ID
+            // 在余下的Mask中输出: 
+            // 1、第二层、三层中都存在的层的ID
+            // 2、TODO: 两边值相似的ID
             RenderTexture alphaMask = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             BlendCS3LUtils.DispacthFindTransformMask(m_TerrainAsset, rawIDEdgeTextureS_Similar, rawIDEdgeTextureT_Similar, rawIDTexture, ref alphaMask);
             Utils.SaveRT2Texture(alphaMask, TextureFormat.RGBA32, GetTextureSavePath("3Layers/3AlphaMask.tga", m_TerrainAsset.m_TerrainName));
@@ -127,29 +128,36 @@ namespace TerrainBlend16
             BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(1, 0, 0, 4), rawIDEdgeTextureT_01, ref layerExtendT);
             Utils.SaveRT2Texture(layerExtendT, TextureFormat.RGBA32, GetTextureSavePath("3Layers/5ExtendThirdLayer.tga", m_TerrainAsset.m_TerrainName));
 
-            // 处理扩展后的相交处
+            // 获得相交处的Mask
+            RenderTexture alphaMask_Extend = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthFindExtendTransformMask(m_TerrainAsset, layerExtendS, layerExtendT, alphaMask_01, ref alphaMask_Extend);
+            Utils.SaveRT2Texture(alphaMask_Extend, TextureFormat.RGBA32, GetTextureSavePath("3Layers/6AlphaMask.tga", m_TerrainAsset.m_TerrainName));
+
+            // 使用相交处的Mask在对RawID和Extend做一次处理
             RenderTexture layerExtendS_01 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             RenderTexture layerExtendT_01 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            RenderTexture alphaMask_02 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS3LUtils.DispacthCheckExtendLayerEdge(m_TerrainAsset, layerExtendS, layerExtendT, alphaMask_01, 
-                ref layerExtendS_01, ref layerExtendT_01, ref alphaMask_02);
-            Utils.SaveRT2Texture(layerExtendS_01, TextureFormat.RGBA32, GetTextureSavePath("3Layers/6ExtendSecondLayer.tga", m_TerrainAsset.m_TerrainName));
-            Utils.SaveRT2Texture(layerExtendT_01, TextureFormat.RGBA32, GetTextureSavePath("3Layers/6ExtendThirdLayer.tga", m_TerrainAsset.m_TerrainName));
-            Utils.SaveRT2Texture(alphaMask_02, TextureFormat.RGBA32, GetTextureSavePath("3Layers/6AlphaMask.tga", m_TerrainAsset.m_TerrainName));
+            RenderTexture rawIDTexture_02 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            RenderTexture alphaMask_Extend_01 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthTransformExtendDimension(m_TerrainAsset, layerExtendS, layerExtendT, alphaMask_Extend, rawIDTexture_01, 
+                ref layerExtendS_01, ref layerExtendT_01, ref rawIDTexture_02, ref alphaMask_Extend_01);
+            Utils.SaveRT2Texture(layerExtendS_01, TextureFormat.RGBA32, GetTextureSavePath("3Layers/7ExtendSecondLayer.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(layerExtendT_01, TextureFormat.RGBA32, GetTextureSavePath("3Layers/7ExtendThirdLayer.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(rawIDTexture_02, TextureFormat.RGBA32, GetTextureSavePath("3Layers/7RawIDTexture.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(alphaMask_Extend_01, TextureFormat.RGBA32, GetTextureSavePath("3Layers/7AlphaMask.tga", m_TerrainAsset.m_TerrainName));
 
             // 处理AlphaMask
             RenderTexture alphaMask_03 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS3LUtils.DispacthCombineAlphaMask(m_TerrainAsset, alphaMask_02, ref alphaMask_03);
+            BlendCS3LUtils.DispacthCombineAlphaMask(m_TerrainAsset, alphaMask_01, alphaMask_Extend_01, ref alphaMask_03);
             RenderTexture alphaMaskExtend = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(1, 0, 0, 4), alphaMask_03, ref alphaMaskExtend);
-            Utils.SaveRT2Texture(alphaMaskExtend, TextureFormat.RGBA32, GetTextureSavePath("3Layers/7AlphaMaskExtend.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(alphaMaskExtend, TextureFormat.RGBA32, GetTextureSavePath("3Layers/8AlphaMaskExtend.tga", m_TerrainAsset.m_TerrainName));
             // 混合
             RenderTexture layerExtendDS = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(0, 1, 0, 2), rawIDTexture, ref layerExtendDS);
             RenderTexture blendTexture = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
 
             BlendCS3LUtils.DispacthThreeLayersBlend(m_TerrainAsset, layerExtendDS, layerExtendS_01, layerExtendT_01, alphaMaskExtend, ref blendTexture);
-            Utils.SaveRT2Texture(blendTexture, TextureFormat.RGBA32, GetTextureSavePath("3Layers/8BlendTexture.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(blendTexture, TextureFormat.RGBA32, GetTextureSavePath("3Layers/9BlendTexture.tga", m_TerrainAsset.m_TerrainName));
 
             rawIDEdgeTextureS.Release();
             rawIDEdgeTextureT.Release();
@@ -166,7 +174,10 @@ namespace TerrainBlend16
 
             layerExtendS_01.Release();
             layerExtendT_01.Release();
-            alphaMask_02.Release();
+            rawIDTexture_02.Release();
+            alphaMask_Extend.Release();
+            alphaMask_Extend_01.Release();
+
             alphaMask_03.Release();
             alphaMaskExtend.Release();
             layerExtendDS.Release();

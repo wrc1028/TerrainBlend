@@ -14,14 +14,28 @@ namespace TerrainBlend16
             {
                 if (GUILayout.Button("Update 2 Layers"))
                 {
+                    RenderTexture rawIDTexture = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
                     RenderTexture rawIDResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    source.Update2LayersBlend(true, ref rawIDResult);
+                    source.Update2LayersBlend(true, ref rawIDTexture, ref rawIDResult);
+                    rawIDTexture.Release();
                     rawIDResult.Release();
                 }
-                if (GUILayout.Button("Update 3 Layers"))
+                
+                if (GUILayout.Button("Update 3 Layers(Split)"))
                 {
+                    RenderTexture rawIDTexture = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
                     RenderTexture rawIDResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    source.Update2LayersBlend(false, ref rawIDResult);
+                    source.Update2LayersBlend(false, ref rawIDTexture, ref rawIDResult);
+                    source.Update3LayersBlend(rawIDTexture);
+                    rawIDTexture.Release();
+                    rawIDResult.Release();
+                }
+
+                if (GUILayout.Button("Update 3 Layers(Combine)"))
+                {
+                    RenderTexture rawIDTexture = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                    RenderTexture rawIDResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                    source.Update2LayersBlend(false, ref rawIDTexture, ref rawIDResult);
                     source.Update3LayersBlend(rawIDResult);
                     rawIDResult.Release();
                 }
