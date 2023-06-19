@@ -1,4 +1,5 @@
 ﻿#pragma kernel FindTransformMask
+#pragma kernel FindNearTransformMask
 #pragma kernel TransformDimension
 #pragma kernel FindExtendTransformMask
 #pragma kernel TransformExtendDimension
@@ -16,12 +17,13 @@
 [numthreads(8, 8, 1)] 
 void FindTransformMask (uint3 id : SV_DispatchThreadID)
 {
+    // R: ID; G: Alpha; B: BlendMask; A: EdgeMask
     float4 sEdgeMask = _TextureInput01[id.xy];
     float4 tEdgeMask = _TextureInput02[id.xy];
     float4 rawIDValue = _TextureInput03[id.xy];
     float4 alphaMask = 0;
-    uint2 idMask = DecodeMask(rawIDValue.r);
-    if ((sEdgeMask.a > 0 || tEdgeMask.a > 0))
+    // TODO: 只是处理了ST重合的位置, 有些没有重合的如何处理
+    if (sEdgeMask.w > 0 && tEdgeMask.w > 0)
     {
         for (uint i = 0; i < 8; i++)
         {
@@ -29,28 +31,87 @@ void FindTransformMask (uint3 id : SV_DispatchThreadID)
             float4 nearSEdgeMask = _TextureInput01[nearID];
             float4 nearTEdgeMask = _TextureInput02[nearID];
             float4 nearRawIDValue = _TextureInput03[nearID];
-            uint2 nearIDMask = DecodeMask(rawIDValue.r);
-            // 再三层结构内操作
-            if (nearRawIDValue.a != 0) continue;
-            if (nearSEdgeMask.a > 0)
+            // 在三层混合结构内操作
+            if (nearRawIDValue.w != 0) continue;
+            if (nearSEdgeMask.w > 0)
             {
-                if (rawIDValue.g == nearRawIDValue.b)
-                    alphaMask.r = rawIDValue.g;
-                else if (rawIDValue.b == nearRawIDValue.g)
-                    alphaMask.r = rawIDValue.b;
+                if (rawIDValue.y == nearRawIDValue.z)
+                    alphaMask.x = rawIDValue.y;
+                else if (rawIDValue.z == nearRawIDValue.y)
+                    alphaMask.x = rawIDValue.z;
             }
-            if (nearTEdgeMask.a > 0)
+            if (nearTEdgeMask.w > 0)
             {
-                if (rawIDValue.g == nearRawIDValue.b)
-                    alphaMask.g = rawIDValue.g;
-                else if (rawIDValue.b == nearRawIDValue.g)
-                    alphaMask.g = rawIDValue.b;
+                if (rawIDValue.y == nearRawIDValue.z)
+                    alphaMask.y = rawIDValue.y;
+                else if (rawIDValue.z == nearRawIDValue.y)
+                    alphaMask.y = rawIDValue.z;
             }
+        }
+    }
+    else if (sEdgeMask.w > 0)
+    {
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
             
         }
-        alphaMask.b = alphaMask.r > 0 ? 1 : (sEdgeMask.a > 0 ? 0.66 : 0);
-        alphaMask.a = alphaMask.g > 0 ? 1 : (tEdgeMask.a > 0 ? 0.66 : 0);
     }
+    else if (tEdgeMask.w > 0)
+    {
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+
+        }
+    }
+    alphaMask.z = alphaMask.x > 0 ? 1 : (sEdgeMask.w > 0 ? 0.5 : 0);
+    alphaMask.w = alphaMask.y > 0 ? 1 : (tEdgeMask.w > 0 ? 0.5 : 0);
+    Result01[id.xy] = alphaMask;
+}
+
+// FindTransformMask 只是针对ST同一区域内的像素进行相似查找
+[numthreads(8, 8, 1)]
+void FindNearTransformMask (uint3 id : SV_DispatchThreadID)
+{
+    float4 rawIDValue = _TextureInput01[id.xy];
+    float4 alphaMask = _TextureInput02[id.xy];
+    if (0 < alphaMask.z && alphaMask.z < 1)
+    {
+        bool retainRawID = true;
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+            float4 nearAlphaMask = _TextureInput02[nearID];
+            if (nearAlphaMask.z != 1) continue;
+
+            if (retainRawID)
+            {
+                alphaMask.x = nearAlphaMask.x;
+                retainRawID = false;
+            }
+        }
+        if (retainRawID) alphaMask.x = rawIDValue.y;
+    }
+    if (0 < alphaMask.w && alphaMask.w < 1)
+    {
+        bool retainRawID = true;
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+            float4 nearAlphaMask = _TextureInput02[nearID];
+            if (nearAlphaMask.w != 1) continue;
+
+            if (retainRawID)
+            {
+                alphaMask.y = nearAlphaMask.y;
+                retainRawID = false;
+            }
+        }
+        if (retainRawID) alphaMask.y = rawIDValue.z;
+    }
+    alphaMask.z = alphaMask.x > 0 ? 1 : (alphaMask.z > 0 ? 0.5 : 0);
+    alphaMask.w = alphaMask.y > 0 ? 1 : (alphaMask.w > 0 ? 0.5 : 0);
     Result01[id.xy] = alphaMask;
 }
 
@@ -67,29 +128,29 @@ void TransformDimension (uint3 id : SV_DispatchThreadID)
     float4 alphaValue = 0;
     bool changeGChannel = false;
     bool changeBChannel = false;
-    if (alphaMask.b == 1 && alphaMask.a == 1)
+    if (alphaMask.z == 1 && alphaMask.w == 1)
     {
-        if (sEdgeMask.r == alphaMask.r)
+        if (sEdgeMask.x == alphaMask.x)
         {
-            alphaValue.r = sEdgeMask.r;
+            alphaValue.x = sEdgeMask.x;
             changeGChannel = true;
         }
-        if (tEdgeMask.r == alphaMask.g)
+        if (tEdgeMask.x == alphaMask.y)
         {
-            alphaValue.g = tEdgeMask.r;
+            alphaValue.y = tEdgeMask.x;
             changeBChannel = true;
         }
     }
     else
     {
-        if (alphaMask.b == 1 && sEdgeMask.r == alphaMask.r)
+        if (alphaMask.z == 1 && sEdgeMask.x == alphaMask.x)
         {
-            alphaValue.r = sEdgeMask.r;
+            alphaValue.x = sEdgeMask.x;
             changeGChannel = true;
         }
-        else if (alphaMask.a == 1 && tEdgeMask.r == alphaMask.g)
+        else if (alphaMask.w == 1 && tEdgeMask.x == alphaMask.y)
         {
-            alphaValue.g = tEdgeMask.r;
+            alphaValue.y = tEdgeMask.x;
             changeBChannel = true;
         }
         else
@@ -98,15 +159,15 @@ void TransformDimension (uint3 id : SV_DispatchThreadID)
             {
                 uint2 nearID = GetNearID(id.xy, i);
                 float4 nearAlphaMask = _TextureInput03[nearID];
-                if (nearAlphaMask.a == 0) continue;
-                if (sEdgeMask.r == nearAlphaMask.r)
+                if (nearAlphaMask.w == 0) continue;
+                if (sEdgeMask.x == nearAlphaMask.x)
                 {
-                    alphaValue.r = sEdgeMask.r;
+                    alphaValue.x = sEdgeMask.x;
                     changeGChannel = true;
                 }
-                if (tEdgeMask.r == nearAlphaMask.g)
+                if (tEdgeMask.x == nearAlphaMask.y)
                 {
-                    alphaValue.g = tEdgeMask.r;
+                    alphaValue.y = tEdgeMask.x;
                     changeBChannel = true;
                 }
             }
@@ -116,15 +177,15 @@ void TransformDimension (uint3 id : SV_DispatchThreadID)
     if (changeGChannel)
     {
         sEdgeMask = 0;
-        rawIDValue.g = Encode(Decode(rawIDValue.g), 0);
+        rawIDValue.y = Encode(Decode(rawIDValue.y), 0);
     }
     if (changeBChannel)
     {
         tEdgeMask = 0;
-        rawIDValue.b = Encode(Decode(rawIDValue.b), 0);
+        rawIDValue.z = Encode(Decode(rawIDValue.z), 0);
     }
-    alphaValue.b = alphaValue.r > 0 ? 1 : 0;
-    alphaValue.a = alphaValue.g > 0 ? 1 : 0;
+    alphaValue.z = alphaValue.x > 0 ? 1 : 0;
+    alphaValue.w = alphaValue.y > 0 ? 1 : 0;
 
     Result01[id.xy] = sEdgeMask;
     Result02[id.xy] = tEdgeMask;
@@ -148,9 +209,9 @@ void FindExtendTransformMask (uint3 id : SV_DispatchThreadID)
     if (extendLayerS.y > 0 && extendLayerT.y > 0)
     {
         if (extendLayerS.x == extendLayerT.x || extendLayerS.x == extendLayerT.y)
-            alphaResult.rg = extendLayerS.x;
+            alphaResult.xy = extendLayerS.x;
         else if (extendLayerS.y == extendLayerT.x || extendLayerS.y == extendLayerT.y)
-            alphaResult.rg = extendLayerS.y;
+            alphaResult.xy = extendLayerS.y;
     }
     // 寻找隔壁是否存在相同ID, 如果有就记录
     else
@@ -165,10 +226,10 @@ void FindExtendTransformMask (uint3 id : SV_DispatchThreadID)
             if (extendLayerS.y > 0 && nearExtendLayerT.y > 0)
             {
                 if (extendLayerS.x == nearExtendLayerT.x || extendLayerS.x == nearExtendLayerT.y)
-                    alphaResult.r = extendLayerS.x;
+                    alphaResult.x = extendLayerS.x;
                 else if (extendLayerS.y == nearExtendLayerT.x || extendLayerS.y == nearExtendLayerT.y)
-                    alphaResult.r = extendLayerS.y;
-                if (alphaResult.r > 0)
+                    alphaResult.x = extendLayerS.y;
+                if (alphaResult.x > 0)
                 {
                     notFindS = false;
                     break;
@@ -177,10 +238,10 @@ void FindExtendTransformMask (uint3 id : SV_DispatchThreadID)
             else if (extendLayerT.y > 0 && nearExtendLayerS.y > 0)
             {
                 if (extendLayerT.x == nearExtendLayerS.x || extendLayerT.x == nearExtendLayerS.y)
-                    alphaResult.g = extendLayerT.x;
+                    alphaResult.y = extendLayerT.x;
                 else if (extendLayerT.y == nearExtendLayerS.x || extendLayerT.y == nearExtendLayerS.y)
-                    alphaResult.g = extendLayerT.y;
-                if (alphaResult.g > 0)
+                    alphaResult.y = extendLayerT.y;
+                if (alphaResult.y > 0)
                 {
                     notFindT = false;
                     break;
@@ -190,16 +251,16 @@ void FindExtendTransformMask (uint3 id : SV_DispatchThreadID)
         if (notFindS && extendLayerS.y > 0 && alphaMask.z == 1)
         {
             if (extendLayerS.x == alphaMask.x)
-                alphaResult.r = extendLayerS.x;
+                alphaResult.x = extendLayerS.x;
             else if (extendLayerS.y == alphaMask.x)
-                alphaResult.r = extendLayerS.y;
+                alphaResult.x = extendLayerS.y;
         }
-        else if (notFindT && extendLayerT.y > 0 && alphaMask.a == 1)
+        else if (notFindT && extendLayerT.y > 0 && alphaMask.w == 1)
         {
             if (extendLayerT.x == alphaMask.y)
-                alphaResult.g = extendLayerT.x;
+                alphaResult.y = extendLayerT.x;
             else if (extendLayerT.y == alphaMask.y)
-                alphaResult.g = extendLayerT.y;
+                alphaResult.y = extendLayerT.y;
         }
         else
         {
@@ -210,25 +271,25 @@ void FindExtendTransformMask (uint3 id : SV_DispatchThreadID)
                 if (notFindS && extendLayerS.y > 0 && nearAlphaMask.z == 1)
                 {
                     if (extendLayerS.x == nearAlphaMask.x)
-                        alphaResult.r = extendLayerS.x;
+                        alphaResult.x = extendLayerS.x;
                     else if (extendLayerS.y == nearAlphaMask.x)
-                        alphaResult.r = extendLayerS.y;
+                        alphaResult.x = extendLayerS.y;
                 }
-                if (notFindT && extendLayerT.y > 0 && nearAlphaMask.a == 1)
+                if (notFindT && extendLayerT.y > 0 && nearAlphaMask.w == 1)
                 {
                     if (extendLayerT.x == nearAlphaMask.y)
-                        alphaResult.g = extendLayerT.x;
+                        alphaResult.y = extendLayerT.x;
                     else if (extendLayerT.y == nearAlphaMask.y)
-                        alphaResult.g = extendLayerT.y;
+                        alphaResult.y = extendLayerT.y;
                 }
             }
         }
-        if (notFindS && extendLayerS.y > 0 && alphaResult.r == 0) alphaResult.r = extendLayerS.x;
-        if (notFindT && extendLayerT.y > 0 && alphaResult.g == 0) alphaResult.g = extendLayerT.x;
+        if (notFindS && extendLayerS.y > 0 && alphaResult.x == 0) alphaResult.x = extendLayerS.x;
+        if (notFindT && extendLayerT.y > 0 && alphaResult.y == 0) alphaResult.y = extendLayerT.x;
     }
 
-    alphaResult.b = alphaResult.r > 0 ? 1 : 0;
-    alphaResult.a = alphaResult.g > 0 ? 1 : 0;
+    alphaResult.z = alphaResult.x > 0 ? 1 : 0;
+    alphaResult.w = alphaResult.y > 0 ? 1 : 0;
 
     Result01[id.xy] = alphaResult;
 }
@@ -251,7 +312,7 @@ void TransformExtendDimension (uint3 id : SV_DispatchThreadID)
         if (extendLayerS.x == alphaMaskExtend.x)
             extendLayerS.x = extendLayerS.y;
     }
-    else if (extendLayerS.a > 0)
+    else if (extendLayerS.w > 0)
     {
         for (uint i = 0; i < 8; i++)
         {
@@ -261,17 +322,17 @@ void TransformExtendDimension (uint3 id : SV_DispatchThreadID)
             if (extendLayerS.x == nearAlphaMaskExtend.x)
             {
                 alphaValue.x = extendLayerS.x;
-                rawIDValue.g = Encode(Decode(rawIDValue.g), 0);
+                rawIDValue.y = Encode(Decode(rawIDValue.y), 0);
             }
         }
     }
 
     if (alphaMaskExtend.w == 1)
     {
-        if (extendLayerT.x == alphaMaskExtend.x)
+        if (extendLayerT.x == alphaMaskExtend.y)
             extendLayerT.x = extendLayerT.y;
     }
-    else if (extendLayerT.a > 0)
+    else if (extendLayerT.w > 0)
     {
         for (uint i = 0; i < 8; i++)
         {
@@ -281,13 +342,13 @@ void TransformExtendDimension (uint3 id : SV_DispatchThreadID)
             if (extendLayerT.x == nearAlphaMaskExtend.y)
             {
                 alphaValue.y = extendLayerT.x;
-                rawIDValue.b = Encode(Decode(rawIDValue.b), 0);
+                rawIDValue.z = Encode(Decode(rawIDValue.z), 0);
             }
         }
     }
 
-    alphaValue.b = alphaValue.r > 0 ? 1 : 0;
-    alphaValue.a = alphaValue.g > 0 ? 1 : 0;
+    alphaValue.z = alphaValue.x > 0 ? 1 : 0;
+    alphaValue.w = alphaValue.y > 0 ? 1 : 0;
 
     Result01[id.xy] = extendLayerS;
     Result02[id.xy] = extendLayerT;
@@ -326,22 +387,22 @@ void ThreeLayersBlend (uint3 id : SV_DispatchThreadID)
       
     float4 threeAreaAlpha = 0;
     uint3 texID = 0;
-    if (secondLayerValueD.a != 0)
+    if (secondLayerValueD.w != 0)
     {
         texID = uint3(id.xy, Decode(secondLayerValueD.x));
         threeAreaAlpha.x = _AlphaTextureArray[texID];
     }
-    if (secondLayerValueT.a != 0)
+    if (secondLayerValueT.w != 0)
     {
         texID = uint3(id.xy, Decode(secondLayerValueT.x));
         threeAreaAlpha.y = _AlphaTextureArray[texID];
     }
-    if (thirdLayerValueT.a != 0)
+    if (thirdLayerValueT.w != 0)
     {
         texID = uint3(id.xy, Decode(thirdLayerValueT.x));
         threeAreaAlpha.z = _AlphaTextureArray[texID];
     }
-    if (alphaLayerValue.a != 0)
+    if (alphaLayerValue.w != 0)
     {
         texID = uint3(id.xy, Decode(alphaLayerValue.x));
         threeAreaAlpha.w = _AlphaTextureArray[texID];

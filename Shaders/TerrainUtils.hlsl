@@ -1,10 +1,11 @@
 #ifndef TERRAIN_BLEND_UTILS_INCLUDE
 #define TERRAIN_BLEND_UTILS_INCLUDE
 
-uint3 _TerrainParams;
+uint4 _TerrainParams;
 #define _LayerCount _TerrainParams.x // 地形层数
 #define _Resolution _TerrainParams.y // 地形Blend贴图的分辨率
 #define _LayerIndex _TerrainParams.z // 当前地形索引
+#define _BlendMode  _TerrainParams.w // 区分二、三层混合
 
 float4 _ExtendParams;
 StructuredBuffer<uint> _IndexRank;

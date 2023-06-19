@@ -7,8 +7,11 @@
         _SingleLayer ("Single Layer", Range(0, 1)) = 1
         _DoubleLayer ("Double Layer", Range(0, 1)) = 1
         _ThreeLayer ("Three Layer", Range(0, 1)) = 1
-
+        _SpecialLayerR ("Special Layer R", Range(0, 1)) = 1
+        _SpecialLayerG ("Special Layer G", Range(0, 1)) = 1
+        _SpecialLayerB ("Special Layer B", Range(0, 1)) = 1
         _Mask ("Mask", 2D) = "white" {}
+        _MaskCtrl ("Mask Ctrl", Range(0, 1)) = 1
     }
     SubShader
     {
@@ -33,6 +36,11 @@
             float _SingleLayer;
             float _DoubleLayer;
             float _ThreeLayer;
+
+            float _SpecialLayerR;
+            float _SpecialLayerG;
+            float _SpecialLayerB;
+            float _MaskCtrl;
 
             static const float4 _TerrainColor[16] = 
             {
@@ -85,12 +93,11 @@
                 int4  layerIndex = idValue >> 4;
                 int4  layerMask = idValue - layerIndex * 16;
                 half3 blendStruct = half3(layerMask.w, layerIndex.w, 1 - layerMask.w - layerIndex.w);
-                // blendStruct.z = (1 - layerMask.x) * _SpecialLayer * blendStruct.z;
                 half3 weight_one = half3(1, 0, 0);
                 half3 weight_two = half3(1 - blendWeight.r, blendWeight.r, 0);
+                blendWeight.g = lerp(blendWeight.a, blendWeight.g, layerMask.g) * (1 - (1 - layerMask.g) * _SpecialLayerG);
+                blendWeight.b = lerp(blendWeight.a, blendWeight.b, layerMask.b) * (1 - (1 - layerMask.b) * _SpecialLayerB);
                 blendWeight.g = blendWeight.g * layerMask.r;
-                blendWeight.g = lerp(blendWeight.a, blendWeight.g, layerMask.g);
-                blendWeight.b = lerp(blendWeight.a, blendWeight.b, layerMask.b);
                 half3 weight_three = half3(1 - blendWeight.g - blendWeight.b, blendWeight.g, blendWeight.b);
                 half3 weight = blendStruct.x * weight_one * _SingleLayer + blendStruct.y * weight_two * _DoubleLayer + blendStruct.z * weight_three * _ThreeLayer;
                 half3 finalColor = weight.x * pow(_TerrainColor[layerIndex.x], 2.2) + 
@@ -98,7 +105,7 @@
                     weight.z * pow(_TerrainColor[layerIndex.z], 2.2);
 
                 half4 maskA = SAMPLE_TEXTURE2D(_Mask, sampler_Mask, input.uv);
-                return float4(finalColor, 1);
+                return float4(finalColor, 1) * (1 - (1 - layerMask.r) * _SpecialLayerR) * pow(lerp(1, maskA.r, _MaskCtrl), 10);
             }
 
             ENDHLSL

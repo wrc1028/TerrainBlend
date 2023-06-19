@@ -9,11 +9,11 @@ namespace TerrainBlend16
     {
         public TerrainBlendAsset m_TerrainAsset;
         
-        public void Update2LayersBlend(bool outputDebugTexture, ref RenderTexture rawIDTexture, ref RenderTexture rawIDResult)
+        public void Update2LayersBlend(bool outputDebugTexture, ref RenderTexture rawIDTexture, ref RenderTexture rawIDResult, ref RenderTexture rChannelMask)
         {
             if (m_TerrainAsset == null || BlendCS2LUtils.Compute == null) return;
             m_TerrainAsset.m_ThreadGroups = Mathf.CeilToInt(m_TerrainAsset.m_AlphamapResolution / 8);
-            BlendCS2LUtils.Compute.SetInts(ShaderParams.s_TerrainParamsID, m_TerrainAsset.m_LayersCount, m_TerrainAsset.m_AlphamapResolution, 0);
+            BlendCS2LUtils.Compute.SetInts(ShaderParams.s_TerrainParamsID, m_TerrainAsset.m_LayersCount, m_TerrainAsset.m_AlphamapResolution, 0, 0);
             ComputeBuffer indexRank = CreateAndGetBuffer(m_TerrainAsset.m_CoverageIndexRank, sizeof(uint));
 
             // 输出原始的IDTexture贴图
@@ -29,12 +29,13 @@ namespace TerrainBlend16
             
             // 处理相交处: 消除边缘混合值相似的Mask
             RenderTexture rawIDEdgeTexture_Similar = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTexture, ref rawIDEdgeTexture_Similar);
+            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTexture, rawIDTexture, ref rawIDEdgeTexture_Similar);
             if (outputDebugTexture)
                 Utils.SaveRT2Texture(rawIDEdgeTexture_Similar, TextureFormat.RGBA32, GetTextureSavePath("2Layers/3RawIDEdgeTexture_Similar.tga", m_TerrainAsset.m_TerrainName));
             
             // 处理相交处: 将G转移到B通道
             RenderTexture rawIDTexture_01 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            RenderTexture rawIDEdgeTexture_G2B = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             BlendCS2LUtils.DispatchTransformDimension(m_TerrainAsset, rawIDTexture, rawIDEdgeTexture_Similar, ref rawIDTexture_01);
             if (outputDebugTexture)
                 Utils.SaveRT2Texture(rawIDTexture_01, TextureFormat.RGBA32, GetTextureSavePath("2Layers/4RawIDTexture_01.tga", m_TerrainAsset.m_TerrainName));
@@ -46,10 +47,11 @@ namespace TerrainBlend16
                 Utils.SaveRT2Texture(layerExtend, TextureFormat.RGBA32, GetTextureSavePath("2Layers/5LayerExtend.tga", m_TerrainAsset.m_TerrainName));
             
             // 处理扩展后的相交处
-            BlendCS2LUtils.DispatchCheckExtendLayerEdge(m_TerrainAsset, rawIDTexture_01, layerExtend, ref rawIDResult);
+            BlendCS2LUtils.DispatchCheckExtendLayerEdge(m_TerrainAsset, rawIDTexture_01, layerExtend, ref rawIDResult, ref rChannelMask);
             if (outputDebugTexture)
             {
                 Utils.SaveRT2Texture(rawIDResult, TextureFormat.RGBA32, GetTextureSavePath("2Layers/6RawIDTexture_02.tga", m_TerrainAsset.m_TerrainName));
+                Utils.SaveRT2Texture(rChannelMask, TextureFormat.RGBA32, GetTextureSavePath("2Layers/6ChannelMask.tga", m_TerrainAsset.m_TerrainName));
                 // 再次扩展
                 RenderTexture layerExtend_R = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
                 BlendCS2LUtils.DispatchIDLayerExtend(m_TerrainAsset, new Vector4(0, 1, 0, 2), rawIDResult, ref layerExtend_R);
@@ -65,6 +67,13 @@ namespace TerrainBlend16
                 BlendCS2LUtils.Compute.SetTexture(BlendCS2LUtils.DoubleLayersBlend, ShaderParams.s_Result1ID, doubleAreaBlend);
                 BlendCS2LUtils.Compute.Dispatch(BlendCS2LUtils.DoubleLayersBlend, m_TerrainAsset.m_ThreadGroups, m_TerrainAsset.m_ThreadGroups, 1);
                 Utils.SaveRT2Texture(doubleAreaBlend, TextureFormat.RGBA32, GetTextureSavePath("2Layers/8DoubleAreaBlend.tga", m_TerrainAsset.m_TerrainName));
+                // Debug  
+                BlendCS2LUtils.Compute.SetTexture(4, ShaderParams.s_TexInput1ID, rawIDTexture);
+                RenderTexture rgEdge = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                BlendCS2LUtils.Compute.SetTexture(4, ShaderParams.s_Result1ID, rgEdge);
+                BlendCS2LUtils.Compute.Dispatch(4, m_TerrainAsset.m_ThreadGroups, m_TerrainAsset.m_ThreadGroups, 1);
+                Utils.SaveRT2Texture(rgEdge, TextureFormat.RGBA32, GetTextureSavePath("2Layers/9Edge.tga", m_TerrainAsset.m_TerrainName));
+
                 layerExtend_R.Release();
                 layerExtend_B.Release();
                 doubleAreaBlend.Release();
@@ -82,7 +91,7 @@ namespace TerrainBlend16
         {
             if (m_TerrainAsset == null || BlendCS2LUtils.Compute == null) return;
             m_TerrainAsset.m_ThreadGroups = Mathf.CeilToInt(m_TerrainAsset.m_AlphamapResolution / 8);
-            BlendCS2LUtils.Compute.SetInts(ShaderParams.s_TerrainParamsID, m_TerrainAsset.m_LayersCount, m_TerrainAsset.m_AlphamapResolution, 1);
+            BlendCS2LUtils.Compute.SetInts(ShaderParams.s_TerrainParamsID, m_TerrainAsset.m_LayersCount, m_TerrainAsset.m_AlphamapResolution, 1, 1);
             ComputeBuffer indexRank = CreateAndGetBuffer(m_TerrainAsset.m_CoverageIndexRank, sizeof(uint));
 
             // 输出RawIDTexture的区域边界
@@ -95,10 +104,10 @@ namespace TerrainBlend16
 
             // 处理相交处: 消除边缘混合值相似的Mask
             RenderTexture rawIDEdgeTextureS_Similar = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTextureS, ref rawIDEdgeTextureS_Similar);
+            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTextureS, rawIDTexture, ref rawIDEdgeTextureS_Similar);
             Utils.SaveRT2Texture(rawIDEdgeTextureS_Similar, TextureFormat.RGBA32, GetTextureSavePath("3Layers/2RawIDEdgeTextureS_Similar.tga", m_TerrainAsset.m_TerrainName));
             RenderTexture rawIDEdgeTextureT_Similar = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTextureT, ref rawIDEdgeTextureT_Similar);
+            BlendCS2LUtils.DispatchCheckLayerSimilarEdge(m_TerrainAsset, indexRank, rawIDEdgeTextureT, rawIDTexture, ref rawIDEdgeTextureT_Similar);
             Utils.SaveRT2Texture(rawIDEdgeTextureT_Similar, TextureFormat.RGBA32, GetTextureSavePath("3Layers/2RawIDEdgeTextureT_Similar.tga", m_TerrainAsset.m_TerrainName));
             
             // 在余下的Mask中输出: 
@@ -106,7 +115,9 @@ namespace TerrainBlend16
             // 2、TODO: 两边值相似的ID
             RenderTexture alphaMask = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
             BlendCS3LUtils.DispacthFindTransformMask(m_TerrainAsset, rawIDEdgeTextureS_Similar, rawIDEdgeTextureT_Similar, rawIDTexture, ref alphaMask);
-            Utils.SaveRT2Texture(alphaMask, TextureFormat.RGBA32, GetTextureSavePath("3Layers/3AlphaMask.tga", m_TerrainAsset.m_TerrainName));
+            RenderTexture alphaMask_Fill = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthFindNearTransformMask(m_TerrainAsset, rawIDTexture, alphaMask, ref alphaMask_Fill);
+            Utils.SaveRT2Texture(alphaMask_Fill, TextureFormat.RGBA32, GetTextureSavePath("3Layers/3AlphaMask.tga", m_TerrainAsset.m_TerrainName));
             
             // 根据上面的Mask, 对RawIDTexture中各自区域内的ID进行处理
             RenderTexture rawIDEdgeTextureS_01 = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
