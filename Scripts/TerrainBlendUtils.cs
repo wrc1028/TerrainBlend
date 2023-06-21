@@ -148,9 +148,9 @@ namespace TerrainBlend16
         {
             get { return GetKernel("FindTransformMask"); }
         }
-        public static int FindNearTransformMask
+        public static int FixTransformMask
         {
-            get { return GetKernel("FindNearTransformMask"); }
+            get { return GetKernel("FixTransformMask"); }
         }
         public static int TransformDimension
         {
@@ -195,13 +195,13 @@ namespace TerrainBlend16
             Compute.SetTexture(FindTransformMask, ShaderParams.s_Result1ID, alphaMask);
             Compute.Dispatch(FindTransformMask, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
-        public static void DispacthFindNearTransformMask(TerrainBlendAsset asset, RenderTexture rawIDTexture, 
+        public static void DispacthFixTransformMask(TerrainBlendAsset asset, RenderTexture rawIDTexture, 
             RenderTexture alphaMask, ref RenderTexture alphaMaskResult)
         {
-            Compute.SetTexture(FindNearTransformMask, ShaderParams.s_TexInput1ID, rawIDTexture);
-            Compute.SetTexture(FindNearTransformMask, ShaderParams.s_TexInput2ID, alphaMask);
-            Compute.SetTexture(FindNearTransformMask, ShaderParams.s_Result1ID, alphaMaskResult);
-            Compute.Dispatch(FindNearTransformMask, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
+            Compute.SetTexture(FixTransformMask, ShaderParams.s_TexInput1ID, rawIDTexture);
+            Compute.SetTexture(FixTransformMask, ShaderParams.s_TexInput2ID, alphaMask);
+            Compute.SetTexture(FixTransformMask, ShaderParams.s_Result1ID, alphaMaskResult);
+            Compute.Dispatch(FixTransformMask, asset.m_ThreadGroups, asset.m_ThreadGroups, 1);
         }
         public static void DispacthTransformDimension(TerrainBlendAsset asset, RenderTexture secondLayerEdge, 
             RenderTexture thirdLayerEdge, RenderTexture alphaMask, RenderTexture rawIDTexture, 

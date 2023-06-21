@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: PrevBlend
-  m_Shader: {fileID: 4800000, guid: 153504c93eaae4c4b931bcdb5c01812e, type: 3}
+  m_Shader: {fileID: 4800000, guid: 8e20c33183c5e40479bb195803cd3833, type: 3}
   m_ShaderKeywords: 
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -20,7 +20,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _FxFBlendTex:
-        m_Texture: {fileID: 2800000, guid: 7f54e8fb1a6a36c4bba91ea2974f41bc, type: 3}
+        m_Texture: {fileID: 2800000, guid: 8444fa0d786c43641b013f489835828d, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFBlendTex3:
@@ -28,7 +28,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFIDTex:
-        m_Texture: {fileID: 2800000, guid: 941aa88496375be4ab738ba8f2e4a3fa, type: 3}
+        m_Texture: {fileID: 2800000, guid: 5a12aba3f4d711f45b8107f9257bc94e, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFIDTex3:
@@ -41,10 +41,12 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Floats:
     - _DoubleLayer: 1
+    - _MaskCtrl: 1
     - _SingleLayer: 1
     - _SpecialLayer: 1
     - _SpecialLayerB: 0
     - _SpecialLayerG: 0
+    - _SpecialLayerR: 0
     - _ThreeLayer: 1
     m_Colors:
     - _Channel: {r: 1, g: 1, b: 1, a: 0.37}

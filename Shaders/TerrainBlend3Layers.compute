@@ -1,5 +1,5 @@
 ﻿#pragma kernel FindTransformMask
-#pragma kernel FindNearTransformMask
+#pragma kernel FixTransformMask
 #pragma kernel TransformDimension
 #pragma kernel FindExtendTransformMask
 #pragma kernel TransformExtendDimension
@@ -13,7 +13,7 @@
 // 2、原始的三层结构
 // 满足Mask的条件: 
 // 1、二、三层都存在的ID
-// 2、混合值相似的ID
+// 2、TODO: 混合值相似的ID
 [numthreads(8, 8, 1)] 
 void FindTransformMask (uint3 id : SV_DispatchThreadID)
 {
@@ -22,7 +22,7 @@ void FindTransformMask (uint3 id : SV_DispatchThreadID)
     float4 tEdgeMask = _TextureInput02[id.xy];
     float4 rawIDValue = _TextureInput03[id.xy];
     float4 alphaMask = 0;
-    // TODO: 只是处理了ST重合的位置, 有些没有重合的如何处理
+    // 处理了ST重合的位置
     if (sEdgeMask.w > 0 && tEdgeMask.w > 0)
     {
         for (uint i = 0; i < 8; i++)
@@ -30,39 +30,42 @@ void FindTransformMask (uint3 id : SV_DispatchThreadID)
             uint2 nearID = GetNearID(id.xy, i);
             float4 nearSEdgeMask = _TextureInput01[nearID];
             float4 nearTEdgeMask = _TextureInput02[nearID];
-            float4 nearRawIDValue = _TextureInput03[nearID];
-            // 在三层混合结构内操作
-            if (nearRawIDValue.w != 0) continue;
-            if (nearSEdgeMask.w > 0)
-            {
-                if (rawIDValue.y == nearRawIDValue.z)
-                    alphaMask.x = rawIDValue.y;
-                else if (rawIDValue.z == nearRawIDValue.y)
-                    alphaMask.x = rawIDValue.z;
-            }
-            if (nearTEdgeMask.w > 0)
-            {
-                if (rawIDValue.y == nearRawIDValue.z)
-                    alphaMask.y = rawIDValue.y;
-                else if (rawIDValue.z == nearRawIDValue.y)
-                    alphaMask.y = rawIDValue.z;
-            }
+            if (nearSEdgeMask.w == 0 || nearTEdgeMask.w == 0) continue;
+            if (sEdgeMask.x == nearSEdgeMask.x || tEdgeMask.x == nearTEdgeMask.x) continue;
+            if (sEdgeMask.x == nearTEdgeMask.x)
+                alphaMask.xy = sEdgeMask.x;
+            else if (tEdgeMask.x == nearSEdgeMask.x)
+                alphaMask.xy = tEdgeMask.x;
         }
     }
+    // 处理第二层未重合的位置(尽量查找)
     else if (sEdgeMask.w > 0)
     {
         for (uint i = 0; i < 8; i++)
         {
             uint2 nearID = GetNearID(id.xy, i);
-            
+            float4 nearSEdgeMask = _TextureInput01[nearID];
+            float4 nearTEdgeMask = _TextureInput02[nearID];
+            if (nearSEdgeMask.w == 0 || sEdgeMask.x == nearSEdgeMask.x) continue;
+            if (sEdgeMask.x == nearTEdgeMask.x)
+                alphaMask.x = sEdgeMask.x;
+            else if (tEdgeMask.x == nearSEdgeMask.x)
+                alphaMask.x = tEdgeMask.x;
         }
     }
+    // 处理第三层未重合的位置(尽量查找)
     else if (tEdgeMask.w > 0)
     {
         for (uint i = 0; i < 8; i++)
         {
             uint2 nearID = GetNearID(id.xy, i);
-
+            float4 nearSEdgeMask = _TextureInput01[nearID];
+            float4 nearTEdgeMask = _TextureInput02[nearID];
+            if (nearTEdgeMask.w == 0 || tEdgeMask.x == nearTEdgeMask.x) continue;
+            if (sEdgeMask.x == nearTEdgeMask.x)
+                alphaMask.y = sEdgeMask.x;
+            else if (tEdgeMask.x == nearSEdgeMask.x)
+                alphaMask.y = tEdgeMask.x;
         }
     }
     alphaMask.z = alphaMask.x > 0 ? 1 : (sEdgeMask.w > 0 ? 0.5 : 0);
@@ -70,45 +73,65 @@ void FindTransformMask (uint3 id : SV_DispatchThreadID)
     Result01[id.xy] = alphaMask;
 }
 
-// FindTransformMask 只是针对ST同一区域内的像素进行相似查找
+// 修补剩余的的AlphaMask
+// 1、如果和G2B的Mask重合, 并且当前ID和周围AlphaMask的ID不匹配, .zw = 0, 匹配就附上值;
+// 2、如果和G2B的Mask重合, 周围不存在AlphaMask, .zw = 1; 
 [numthreads(8, 8, 1)]
-void FindNearTransformMask (uint3 id : SV_DispatchThreadID)
+void FixTransformMask (uint3 id : SV_DispatchThreadID)
 {
     float4 rawIDValue = _TextureInput01[id.xy];
     float4 alphaMask = _TextureInput02[id.xy];
     if (0 < alphaMask.z && alphaMask.z < 1)
     {
-        bool retainRawID = true;
-        for (uint i = 0; i < 8; i++)
+        if (DecodeMask(rawIDValue.r).y == 0)
         {
-            uint2 nearID = GetNearID(id.xy, i);
-            float4 nearAlphaMask = _TextureInput02[nearID];
-            if (nearAlphaMask.z != 1) continue;
-
-            if (retainRawID)
+            bool isIsolate = true;
+            for (uint i = 0; i < 8; i++)
             {
-                alphaMask.x = nearAlphaMask.x;
-                retainRawID = false;
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearAlphaMask = _TextureInput02[nearID];
+                if (nearAlphaMask.z != 1) continue;
+                if (rawIDValue.y != nearAlphaMask.x)
+                    isIsolate = false;                    
             }
+            if (isIsolate) alphaMask.x = rawIDValue.y;
         }
-        if (retainRawID) alphaMask.x = rawIDValue.y;
+        else
+        {
+            bool retainRawID = true;
+            for (uint i = 0; i < 8; i++)
+            {
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearAlphaMask = _TextureInput02[nearID];
+                if (nearAlphaMask.z != 1) continue;
+
+                if (retainRawID)
+                {
+                    alphaMask.x = nearAlphaMask.x;
+                    retainRawID = false;
+                }
+            }
+            if (retainRawID) alphaMask.x = 0;
+        }
     }
     if (0 < alphaMask.w && alphaMask.w < 1)
     {
-        bool retainRawID = true;
-        for (uint i = 0; i < 8; i++)
         {
-            uint2 nearID = GetNearID(id.xy, i);
-            float4 nearAlphaMask = _TextureInput02[nearID];
-            if (nearAlphaMask.w != 1) continue;
-
-            if (retainRawID)
+            bool retainRawID = true;
+            for (uint i = 0; i < 8; i++)
             {
-                alphaMask.y = nearAlphaMask.y;
-                retainRawID = false;
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearAlphaMask = _TextureInput02[nearID];
+                if (nearAlphaMask.w != 1) continue;
+
+                if (retainRawID)
+                {
+                    alphaMask.y = nearAlphaMask.y;
+                    retainRawID = false;
+                }
             }
+            if (retainRawID) alphaMask.y = 0;
         }
-        if (retainRawID) alphaMask.y = rawIDValue.z;
     }
     alphaMask.z = alphaMask.x > 0 ? 1 : (alphaMask.z > 0 ? 0.5 : 0);
     alphaMask.w = alphaMask.y > 0 ? 1 : (alphaMask.w > 0 ? 0.5 : 0);
@@ -356,7 +379,7 @@ void TransformExtendDimension (uint3 id : SV_DispatchThreadID)
     Result04[id.xy] = alphaValue;
 }
 
-// 合并AlphaMask
+// TODO: 合并AlphaMask
 [numthreads(8, 8, 1)]
 void CombineAlphaMask (uint3 id : SV_DispatchThreadID)
 {

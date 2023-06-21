@@ -3,8 +3,6 @@
 #pragma kernel CheckLayerSimilarEdge
 #pragma kernel TransformDimension
 
-#pragma kernel CheckRGEdge
-
 #pragma kernel IDLayerExtend
 #pragma kernel CheckExtendLayerEdge
 #pragma kernel DoubleLayersBlend
@@ -72,7 +70,11 @@ void FindIDLayerEdge (uint3 id : SV_DispatchThreadID)
             break;
         }
         edgeMaskResult.x = centerIDValue;
-        edgeMaskResult.y = _AlphaTextureArray[uint3(id.xy, Decode(centerIDValue))];
+        for (uint j = 0; j < 8; j++)
+        {
+            edgeMaskResult.y += _AlphaTextureArray[uint3(GetNearID(id.xy, j), Decode(centerIDValue))];
+        }
+        edgeMaskResult.y = (edgeMaskResult.y + _AlphaTextureArray[uint3(id.xy, Decode(centerIDValue))]) * 0.11111111;
         edgeMaskResult.z = 1;
         edgeMaskResult.w = onBoundary ? 1 : 0;
     }
@@ -107,7 +109,7 @@ void CheckLayerSimilarEdge (uint3 id : SV_DispatchThreadID)
 {
     float4 edgeMask = _TextureInput01[id.xy];
     float4 rawIDValue = _TextureInput02[id.xy];
-    float2 similarRange = float2(0.15, 0.25);
+    float2 similarRange = float2(0.1, 0.15);
     bool canTransform = false;
     bool isSimilar = true;
     int centerIndex = Decode(edgeMask.x);
@@ -129,44 +131,15 @@ void CheckLayerSimilarEdge (uint3 id : SV_DispatchThreadID)
                 
                 float centerNearAlpha = _AlphaTextureArray[uint3(nearID, Decode(edgeMask.x))];
                 // 当前位置的混合值和周围不同ID的混合值相比||周围某一点上的混合值和当前点ID对应的混合值做对比
-                // TODO: 存在只满足后面的条件形成的孤立Mask, 需要单独处理, 需要输出转移之后没有用上的edgeMask
-                if ((abs(nearEdgeMask.y - edgeMask.y) > similarRange.x)) // || (abs(centerNearAlpha - nearEdgeMask.y) > similarRange.y))
+                if ((abs(nearEdgeMask.y - edgeMask.y) > similarRange.x))
                     isSimilar = false;
             }
         }
         if (canTransform && _LayerIndex == 0)
-        {    
             edgeMask.w = 0.5;
-            // float rChannelAlpha = _AlphaTextureArray[uint3(id.xy, Decode(rawIDValue.x))];
-            // for (uint j = 0; j < 8; j++)
-            // {
-            //     uint2 nearID = GetNearID(id.xy, j);
-            //     float4 nearEdgeMask = _TextureInput01[nearID];
-            //     float4 nearRawIDValue = _TextureInput02[nearID];
-            //     if (nearEdgeMask.w == 0 || rawIDValue.x == nearRawIDValue.x) continue;
-            //     if (rawIDValue.x == nearRawIDValue.y && abs(1 - edgeMask.y - nearEdgeMask.y) < 0.06)
-            //         isSimilar = true;
-            // }
-        }
         if (isSimilar) edgeMask.w = 0;
     }
     Result01[id.xy] = edgeMask;
-}
-
-[numthreads(8, 8, 1)]
-void CheckRGEdge (uint3 id : SV_DispatchThreadID)
-{
-    float4 rawIDValue = _TextureInput01[id.xy];
-    bool isRGEdge = false;
-    for (uint j = 0; j < 8; j++)
-    {
-        uint2 nearID = GetNearID(id.xy, j);
-        float4 nearRawIDValue = _TextureInput01[nearID];
-        if (rawIDValue.x == nearRawIDValue.x) continue;
-        if (rawIDValue.x == nearRawIDValue.y)
-            isRGEdge = true;
-    }
-    Result01[id.xy] = isRGEdge ? 1 : 0;
 }
 // 更改符合要求像素以及其周围相同ID像素的维度
 [numthreads(8, 8, 1)]
