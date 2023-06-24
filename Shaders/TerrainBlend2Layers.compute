@@ -21,6 +21,7 @@ void RawIDTexture (uint3 id : SV_DispatchThreadID)
     {
         uint3 texID = uint3(id.xy, _IndexRank[i]);
         float4 rawIDMask = _RawIDMaskArray[texID];
+        // 擦除步骤能确保可见层最多为三层
         if (rawIDMask.x == 0) continue;
         validLayerCount += 1;
         if (validLayerCount == 1) layersIndex.x = _IndexRank[i];
@@ -80,9 +81,6 @@ void FindIDLayerEdge (uint3 id : SV_DispatchThreadID)
     }
     Result01[id.xy] = edgeMaskResult;
 }
-
-// TODO: 可以插入一Kernel, 如果有些像素的混合权重值很小, 并且其周围同ID的权重值也很小(差值小)
-// 可以考虑将其变成单层情况
 
 // 判断在A读取顺序是否比B前
 bool ComparativeRanking(uint A, uint B)
@@ -176,6 +174,7 @@ void TransformDimension (uint3 id : SV_DispatchThreadID)
 }
 
 // 在多层混合区域边缘扩展一层
+// TODO: 扩展的时候忽视G2B的像素
 [numthreads(8, 8, 1)]
 void IDLayerExtend (uint3 id : SV_DispatchThreadID)
 {

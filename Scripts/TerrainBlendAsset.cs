@@ -248,7 +248,7 @@ namespace TerrainBlend16
             // 输出IDMask和归一化后的Alpha
             for (int i = 0; i < m_LayersCount; i++)
             {
-                // // 输出RawIDMask
+                // 输出RawIDMask
                 EraseShaderUtils.Compute.SetTexture(EraseShaderUtils.RawIDMask, EraseShaderUtils.s_EraseMaskID, m_EraseMaskRT);
                 EraseShaderUtils.Compute.SetTexture(EraseShaderUtils.RawIDMask, EraseShaderUtils.s_AlphaNormalizeID, m_AlphaNormalizeResult);
                 EraseShaderUtils.Compute.SetTexture(EraseShaderUtils.RawIDMask, EraseShaderUtils.s_AlphaTextureID, m_BlurredEraseRTList[i]);

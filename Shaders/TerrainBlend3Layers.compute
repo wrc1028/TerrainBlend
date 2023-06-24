@@ -12,8 +12,7 @@
 // 1、特殊的三层混合结构, 二层转三层
 // 2、原始的三层结构
 // 满足Mask的条件: 
-// 1、二、三层都存在的ID
-// 2、TODO: 混合值相似的ID
+// 1、如果是找相似ID, 那会存在找不全的情况, 如果是查找ID相似值的话, 可能会
 [numthreads(8, 8, 1)] 
 void FindTransformMask (uint3 id : SV_DispatchThreadID)
 {
@@ -22,24 +21,8 @@ void FindTransformMask (uint3 id : SV_DispatchThreadID)
     float4 tEdgeMask = _TextureInput02[id.xy];
     float4 rawIDValue = _TextureInput03[id.xy];
     float4 alphaMask = 0;
-    // 处理了ST重合的位置
-    if (sEdgeMask.w > 0 && tEdgeMask.w > 0)
-    {
-        for (uint i = 0; i < 8; i++)
-        {
-            uint2 nearID = GetNearID(id.xy, i);
-            float4 nearSEdgeMask = _TextureInput01[nearID];
-            float4 nearTEdgeMask = _TextureInput02[nearID];
-            if (nearSEdgeMask.w == 0 || nearTEdgeMask.w == 0) continue;
-            if (sEdgeMask.x == nearSEdgeMask.x || tEdgeMask.x == nearTEdgeMask.x) continue;
-            if (sEdgeMask.x == nearTEdgeMask.x)
-                alphaMask.xy = sEdgeMask.x;
-            else if (tEdgeMask.x == nearSEdgeMask.x)
-                alphaMask.xy = tEdgeMask.x;
-        }
-    }
-    // 处理第二层未重合的位置(尽量查找)
-    else if (sEdgeMask.w > 0)
+    // 处理第二层
+    if (sEdgeMask.w > 0)
     {
         for (uint i = 0; i < 8; i++)
         {
@@ -48,13 +31,19 @@ void FindTransformMask (uint3 id : SV_DispatchThreadID)
             float4 nearTEdgeMask = _TextureInput02[nearID];
             if (nearSEdgeMask.w == 0 || sEdgeMask.x == nearSEdgeMask.x) continue;
             if (sEdgeMask.x == nearTEdgeMask.x)
+            {
                 alphaMask.x = sEdgeMask.x;
+                break;
+            }
             else if (tEdgeMask.x == nearSEdgeMask.x)
+            {
                 alphaMask.x = tEdgeMask.x;
+                break;
+            }
         }
     }
-    // 处理第三层未重合的位置(尽量查找)
-    else if (tEdgeMask.w > 0)
+    // 处理第三层, 因为第三层有G通道传过来的ID, 所以需要多做一些判断
+    if (tEdgeMask.w > 0)
     {
         for (uint i = 0; i < 8; i++)
         {
@@ -68,14 +57,13 @@ void FindTransformMask (uint3 id : SV_DispatchThreadID)
                 alphaMask.y = tEdgeMask.x;
         }
     }
+
     alphaMask.z = alphaMask.x > 0 ? 1 : (sEdgeMask.w > 0 ? 0.5 : 0);
     alphaMask.w = alphaMask.y > 0 ? 1 : (tEdgeMask.w > 0 ? 0.5 : 0);
     Result01[id.xy] = alphaMask;
 }
 
-// 修补剩余的的AlphaMask
-// 1、如果和G2B的Mask重合, 并且当前ID和周围AlphaMask的ID不匹配, .zw = 0, 匹配就附上值;
-// 2、如果和G2B的Mask重合, 周围不存在AlphaMask, .zw = 1; 
+// 修补剩余的Mask
 [numthreads(8, 8, 1)]
 void FixTransformMask (uint3 id : SV_DispatchThreadID)
 {

@@ -1,0 +1,62 @@
+﻿#pragma kernel CheckSameLayerID
+
+static const float4 _ChannelMask[3] = 
+{
+    float4(0, 1, 0, 0),  float4(0, 0, 1, 0),  float4(0, 0, 0, 1),
+};
+#include "TerrainUtils.hlsl"
+
+bool DistinguishHierarchy(uint layersCount, float4 rawIDValue)
+{
+    uint2 blendStruct = DecodeMask(rawIDValue.w);
+    if (blendStruct.x == 1) return layersCount == 2;
+    else if (blendStruct.y == 1) return layersCount == 1;
+    else 
+    {
+        bool normal3Layses = true;
+        if (_BlendMode == 1 && _ExtendParams.y == 1 &&
+            DecodeMask(rawIDValue.x).y == 0)
+            normal3Layses = false;
+        return layersCount == 3 && normal3Layses;
+    }
+}
+[numthreads(8,8,1)]
+void CheckSameLayerID (uint3 id : SV_DispatchThreadID)
+{
+    // G: 使用的是G2B之前的三层区域, 
+    // B: 需要考虑G2B的情况
+    float4 rawIDValue = _TextureInput01[id.xy];
+    float4 layerEdge = _TextureInput02[id.xy];
+    float4 alphaMask = 0;
+    if (layerEdge.x > 0)
+    {
+        float refIDValue = _ExtendParams.y == 1 ? rawIDValue.z : rawIDValue.y;
+        for (uint i = 0; i < 3; i++)
+        {
+            float layerIDValue = dot(_ChannelMask[i], layerEdge);
+            if (layerIDValue == 0) break;
+            // 遍历当前及其周围的ID
+            if (layerIDValue == refIDValue)
+                alphaMask.x = layerIDValue;
+            else
+            {
+                for (uint j = 0; j < 8; j++)
+                {
+                    uint2 nearID = GetNearID(id.xy, j);
+                    float4 nearRawIDValue = _TextureInput01[nearID];
+                    if (!DistinguishHierarchy(3, nearRawIDValue)) continue;
+                    float refNearIDValue = _ExtendParams.y == 1 ? nearRawIDValue.z : nearRawIDValue.y;
+                    if (layerIDValue == refNearIDValue)
+                    {
+                        alphaMask.x = layerIDValue;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (alphaMask.x == 0 && layerEdge.y > 0)
+        alphaMask = layerEdge;
+    
+    Result01[id.xy] = alphaMask;
+}

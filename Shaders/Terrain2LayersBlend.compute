@@ -1,0 +1,190 @@
+﻿#pragma kernel RawIDTexture
+#pragma kernel IDMaskErase
+#pragma kernel IDMaskExtend
+#pragma kernel CheckIDLayerEdge
+#pragma kernel TransformG2B
+#pragma kernel DoubleLayersBlend
+
+#include "TerrainUtils.hlsl"
+
+Texture2DArray<float4> _RawIDMaskArray;
+RWTexture2DArray<float4> RawIDMaskArrayResult;
+
+// 根据RawIDMask输出RawIDTexture
+[numthreads(8, 8, 1)]
+void RawIDTexture (uint3 id : SV_DispatchThreadID)
+{
+    uint  validLayerCount = 0;
+    uint3 layersIndex = 0;
+    for (uint i = 0; i < _LayerCount; i++)
+    {
+        uint3 texID = uint3(id.xy, _IndexRank[i]);
+        float4 rawIDMask = _RawIDMaskArray[texID];
+        // 擦除步骤能确保可见层最多为三层
+        if (rawIDMask.x == 0) continue;
+        validLayerCount += 1;
+        if (validLayerCount == 1) layersIndex.x = _IndexRank[i];
+        if (validLayerCount == 2) layersIndex.y = _IndexRank[i];
+        if (validLayerCount == 3) layersIndex.z = _IndexRank[i];
+    }
+    // RGB: 0101(ID) 0001(mask), A 000(1:双层) 000(1:单层)
+    float3 idsValue = float3(Encode(layersIndex.x, 1), Encode(layersIndex.y, 1), Encode(layersIndex.z, 1));
+    float  blendStruct = validLayerCount == 1 ? 1 : (validLayerCount == 2 ? 16 : 0);
+    Result01[id.xy] = float4(idsValue, blendStruct / 255.0);
+}
+
+bool DistinguishHierarchy(uint layersCount, float4 rawIDValue)
+{
+    uint2 blendStruct = DecodeMask(rawIDValue.w);
+    if (blendStruct.x == 1) return layersCount == 2;
+    else if (blendStruct.y == 1) return layersCount == 1;
+    else 
+    {
+        bool normal3Layses = true;
+        if (_BlendMode == 1 && _ExtendParams.y == 1 &&
+            DecodeMask(rawIDValue.x).y == 0)
+            normal3Layses = false;
+        return layersCount == 3 && normal3Layses;
+    }
+}
+// 保留二、三层混合结构区域内的IDMask
+[numthreads(8, 8, 1)]
+void IDMaskErase (uint3 id : SV_DispatchThreadID)
+{
+    float4 rawIDValue = _TextureInput01[id.xy];
+    float centerIDValue = dot(_ExtendParams.xyz, rawIDValue.xyz);
+    int centerIDIndex = Decode(centerIDValue);
+    for (uint i = 0; i < _LayerCount; i++)
+    {
+        int layerIndex = _IndexRank[i];
+        float4 rawIDMask = _RawIDMaskArray[uint3(id.xy, layerIndex)];
+        rawIDMask.z = Encode(_IndexRank[i], 1);
+        if (!DistinguishHierarchy(_ExtendParams.w, rawIDValue) || centerIDIndex != layerIndex)
+            rawIDMask.x = 0;
+        RawIDMaskArrayResult[uint3(id.xy, i)] = rawIDMask;
+    }
+}
+// 在二、三层混合结构区域内, 对每层结构进行扩展
+[numthreads(8, 8, 1)]
+void IDMaskExtend (uint3 id : SV_DispatchThreadID)
+{
+    for (uint i = 0; i < _LayerCount; i++)
+    {
+        float4 rawIDMask = _RawIDMaskArray[uint3(id.xy, i)];
+        bool signIDMask = rawIDMask.x == 1;
+        float blurBlendValue = rawIDMask.y;
+        for (uint j = 0; j < 8; j++)
+        {
+            uint2 nearID = GetNearID(id.xy, j);
+            float4 nearRawIDMask = _RawIDMaskArray[uint3(nearID, i)];
+            blurBlendValue += nearRawIDMask.y;
+            if (nearRawIDMask.x == 0) continue;
+            signIDMask = true;
+        }
+        float4 rawIDMaskResult = 0;
+        if (signIDMask)
+        {
+            rawIDMaskResult.x = 1;
+            rawIDMaskResult.y = blurBlendValue * 0.111111;
+            rawIDMaskResult.z = rawIDMask.z;
+            rawIDMaskResult.a = 1 * (1 - rawIDMask.x);
+        }
+        RawIDMaskArrayResult[uint3(id.xy, i)] = rawIDMaskResult;
+    }
+}
+
+[numthreads(8, 8, 1)]
+void CheckIDLayerEdge (uint3 id : SV_DispatchThreadID)
+{
+    float4 idValues = 0;
+    float4 blendValues = 0;
+    uint validLayerCount = 0;
+    for (uint i = 0; i < _LayerCount; i++)
+    {
+        uint3 texID = uint3(id.xy, i);
+        float4 rawIDMask = _RawIDMaskArray[texID];
+        if (rawIDMask.x == 0) continue;
+        validLayerCount += 1;
+        if (validLayerCount == 1) { idValues.x = rawIDMask.z; blendValues.x = rawIDMask.y; }
+        if (validLayerCount == 2) { idValues.y = rawIDMask.z; blendValues.y = rawIDMask.y; }
+        if (validLayerCount == 3) { idValues.z = rawIDMask.z; blendValues.z = rawIDMask.y; }
+        if (validLayerCount == 4) { idValues.w = rawIDMask.z; blendValues.w = rawIDMask.y; }
+    }
+    // 判断相似
+    if (validLayerCount == 2 && abs(blendValues.x - blendValues.y) < 0.1)
+    {
+        idValues.y = 0;
+        // idValues.w = 1;
+    }
+    if (validLayerCount > 4)
+        idValues.w = 1;
+    // TODO: 根据输出贴图, 发现绝大多数是2层, 少部分是3层, 极少4层
+    Result01[id.xy] = idValues;
+}
+
+// 输出转移之后的RawIDTexture
+// 输出第二次的混合贴图
+[numthreads(8, 8, 1)]
+void TransformG2B (uint3 id : SV_DispatchThreadID)
+{
+    float4 rawIDValue = _TextureInput01[id.xy];
+    float4 layerEdge = _TextureInput02[id.xy];
+    bool canTransform = false;
+    int centerIndex = Decode(rawIDValue.y);
+    // 仅仅对双层混合结构区域内的像素进行处理
+    if (DistinguishHierarchy(2, rawIDValue))
+    {
+        if (layerEdge.y > 0 && rawIDValue.y == layerEdge.y)
+            canTransform = true;
+        else
+        {
+            for (uint i = 0; i < 8; i++)
+            {
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearLayerEdge = _TextureInput02[nearID];
+                if (nearLayerEdge.y == 0 || rawIDValue.y != nearLayerEdge.y) continue;
+                    canTransform = true;
+            }
+        }
+    }
+    // G ==> B
+    if (canTransform)
+    {
+        rawIDValue.x = Encode(Decode(rawIDValue.x), 0);
+        rawIDValue.z = rawIDValue.y;
+        rawIDValue.w = 0;
+    }
+    Result01[id.xy] = rawIDValue;
+}
+
+[numthreads(8, 8, 1)]
+void DoubleLayersBlend (uint3 id : SV_DispatchThreadID)
+{
+    float4 rawIDValue = _TextureInput01[id.xy];
+    float4 layerEdge = _TextureInput02[id.xy];
+    float4 blendValues = 0;
+    if (layerEdge.x > 0)
+    {
+        uint3 texID = uint3(id.xy, Decode(layerEdge.x));
+        blendValues.x = _AlphaTextureArray[texID];
+    }
+    float bChannelID = 0;
+    if (DecodeMask(rawIDValue.r).y == 0)
+        bChannelID = rawIDValue.z;
+    else
+    {
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+            float4 nearIDValue = _TextureInput01[nearID];
+            if (DecodeMask(nearIDValue.r).y == 1) continue;
+                bChannelID = nearIDValue.z;
+        }
+    }
+    if (bChannelID > 0)
+    {
+        uint3 texID = uint3(id.xy, Decode(bChannelID));
+        blendValues.z = _AlphaTextureArray[texID];
+    }
+    Result01[id.xy] = blendValues;
+}

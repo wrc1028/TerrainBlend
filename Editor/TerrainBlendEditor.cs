@@ -14,26 +14,24 @@ namespace TerrainBlend16
             {
                 if (GUILayout.Button("Update 2 Layers"))
                 {
-                    RenderTexture rawIDTexture = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
                     RenderTexture rawIDResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    RenderTexture rChannelMask = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    source.Update2LayersBlend(true, ref rawIDTexture, ref rawIDResult, ref rChannelMask);
-                    rawIDTexture.Release();
+                    RenderTexture rawBlendResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                    source.Update2LayersBlend(true, ref rawIDResult, ref rawBlendResult);
                     rawIDResult.Release();
-                    rChannelMask.Release();
+                    rawBlendResult.Release();
                 }
                 
-                if (GUILayout.Button("Update 3 Layers(Split)"))
-                {
-                    RenderTexture rawIDTexture = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    RenderTexture rawIDResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    RenderTexture rChannelMask = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    source.Update2LayersBlend(false, ref rawIDTexture, ref rawIDResult, ref rChannelMask);
-                    source.Update3LayersBlend(rawIDTexture);
-                    rawIDTexture.Release();
-                    rawIDResult.Release();
-                    rChannelMask.Release();
-                }
+                // if (GUILayout.Button("Update 3 Layers(Split)"))
+                // {
+                //     RenderTexture rawIDTexture = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                //     RenderTexture rawIDResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                //     RenderTexture rChannelMask = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                //     source.Update2LayersBlend(false, ref rawIDTexture, ref rawIDResult, ref rChannelMask);
+                //     source.Update3LayersBlend(rawIDTexture);
+                //     rawIDTexture.Release();
+                //     rawIDResult.Release();
+                //     rChannelMask.Release();
+                // }
 
                 if (GUILayout.Button("Update 3 Layers(Combine)"))
                 {
@@ -41,14 +39,12 @@ namespace TerrainBlend16
                     // 1、R通道, 标记了转移的像素(Mask ==> 0)
                     // 2、B通道, 继承了从G通道转移而来的ID
                     // 3、A通道, 转移像素的混合结构从双层混合变为三层混合
-                    RenderTexture rawIDTexture = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
                     RenderTexture rawIDResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    RenderTexture rChannelMask = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-                    source.Update2LayersBlend(false, ref rawIDTexture, ref rawIDResult, ref rChannelMask);
-                    source.Update3LayersBlend(rawIDResult);
-                    rawIDTexture.Release();
+                    RenderTexture rawBlendResult = Utils.CreateRenderTexture(source.m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                    source.Update2LayersBlend(false, ref rawIDResult, ref rawBlendResult);
+                    source.Update3LayersBlend(rawIDResult, rawBlendResult);
                     rawIDResult.Release();
-                    rChannelMask.Release();
+                    rawBlendResult.Release();
                 }
             }
         }
