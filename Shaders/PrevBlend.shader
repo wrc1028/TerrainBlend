@@ -104,27 +104,27 @@
                 blendWeight.g = blendWeight.g * layerMask.r;
                 half3 weight_three = half3(1 - blendWeight.g - blendWeight.b, blendWeight.g, blendWeight.b);
                 half3 weight = blendStruct.x * weight_one * _SingleLayer + blendStruct.y * weight_two * _DoubleLayer + blendStruct.z * weight_three;
-                half3 finalColor = weight.x * pow(_TerrainColor[layerIndex.x], 2.2) + 
-                    weight.y * pow(_TerrainColor[layerIndex.y], 2.2) + 
-                    weight.z * pow(_TerrainColor[layerIndex.z], 2.2);
+                half3 finalColor = weight.x * pow(_TerrainColor[layerIndex.x].rgb, 2.2) + 
+                    weight.y * pow(_TerrainColor[layerIndex.y].rgb, 2.2) + 
+                    weight.z * pow(_TerrainColor[layerIndex.z].rgb, 2.2);
                 
                 // Three Layers
-                blendWeight = SAMPLE_TEXTURE2D(_FxFBlendTex3, sampler_FxFBlendTex3, input.uv);
-                idcol = SAMPLE_TEXTURE2D(_FxFIDTex3, sampler_FxFIDTex3, input.uv);
-                idValue = floor(idcol * 255);
-                layerIndex = idValue >> 4;
-                layerMask = idValue - layerIndex * 16;
-                blendStruct = half3(layerMask.w, layerIndex.w, 1 - layerMask.w - layerIndex.w);
-                blendWeight.g = lerp(blendWeight.a, blendWeight.g, layerMask.g) * (1 - (1 - layerMask.g) * _SpecialLayerG);
-                blendWeight.b = lerp(blendWeight.a, blendWeight.b, layerMask.b) * (1 - (1 - layerMask.b) * _SpecialLayerB);;
-                weight_three = half3(1 - blendWeight.g - blendWeight.b, blendWeight.g, blendWeight.b);
-                weight = blendStruct.z * weight_three * _ThreeLayer;
-                finalColor += weight.x * pow(_TerrainColor[layerIndex.x], 2.2) + 
-                    weight.y * pow(_TerrainColor[layerIndex.y], 2.2) + 
-                    weight.z * pow(_TerrainColor[layerIndex.z], 2.2);
+                // blendWeight = SAMPLE_TEXTURE2D(_FxFBlendTex3, sampler_FxFBlendTex3, input.uv);
+                // idcol = SAMPLE_TEXTURE2D(_FxFIDTex3, sampler_FxFIDTex3, input.uv);
+                // idValue = floor(idcol * 255);
+                // layerIndex = idValue >> 4;
+                // layerMask = idValue - layerIndex * 16;
+                // blendStruct = half3(layerMask.w, layerIndex.w, 1 - layerMask.w - layerIndex.w);
+                // blendWeight.g = lerp(blendWeight.a, blendWeight.g, layerMask.g) * (1 - (1 - layerMask.g) * _SpecialLayerG);
+                // blendWeight.b = lerp(blendWeight.a, blendWeight.b, layerMask.b) * (1 - (1 - layerMask.b) * _SpecialLayerB);;
+                // weight_three = half3(1 - blendWeight.g - blendWeight.b, blendWeight.g, blendWeight.b);
+                // weight = blendStruct.z * weight_three * _ThreeLayer;
+                // finalColor += weight.x * pow(_TerrainColor[layerIndex.x], 2.2) + 
+                //     weight.y * pow(_TerrainColor[layerIndex.y], 2.2) + 
+                //     weight.z * pow(_TerrainColor[layerIndex.z], 2.2);
                 
                 half4 maskA = SAMPLE_TEXTURE2D(_Mask, sampler_Mask, input.uv);
-                return float4(finalColor, 1) * pow(maskA.r, 10);
+                return float4(finalColor, 1) * pow(abs(maskA.r), 10);
             }
 
             ENDHLSL

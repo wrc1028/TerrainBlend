@@ -130,7 +130,6 @@ void TransformG2B (uint3 id : SV_DispatchThreadID)
     float4 rawIDValue = _TextureInput01[id.xy];
     float4 layerEdge = _TextureInput02[id.xy];
     bool canTransform = false;
-    int centerIndex = Decode(rawIDValue.y);
     // 仅仅对双层混合结构区域内的像素进行处理
     if (DistinguishHierarchy(2, rawIDValue))
     {
@@ -143,7 +142,8 @@ void TransformG2B (uint3 id : SV_DispatchThreadID)
                 uint2 nearID = GetNearID(id.xy, i);
                 float4 nearLayerEdge = _TextureInput02[nearID];
                 if (nearLayerEdge.y == 0 || rawIDValue.y != nearLayerEdge.y) continue;
-                    canTransform = true;
+                canTransform = true;
+                break;
             }
         }
     }

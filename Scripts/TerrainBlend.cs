@@ -88,21 +88,83 @@ namespace TerrainBlend16
             // 查找可以转移到A通道的ID, 比如: 
             // 1、在相同区域内GB都存在的ID;
             // 2、混合值相似的情况
-            RenderTexture alphaMaskG = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
-            BlendCS3LUtils.DispacthCheckSameLayerID(m_TerrainAsset, new Vector4(0, 1, 0, 3), rawIDTexture, rawIDLayerEdgeG, ref alphaMaskG);
-            Utils.SaveRT2Texture(alphaMaskG, TextureFormat.RGBA32, GetTextureSavePath("3Layers/2_1AlphaMaskG.tga", m_TerrainAsset.m_TerrainName));
-
+            RenderTexture sameLayerIDG = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthCheckSameLayerID(m_TerrainAsset, rawIDLayerEdgeG, rawIDLayerEdgeB, ref sameLayerIDG);
+            RenderTexture sameLayerIDB = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthCheckSameLayerID(m_TerrainAsset, rawIDLayerEdgeB, rawIDLayerEdgeG, ref sameLayerIDB);
+            Utils.SaveRT2Texture(sameLayerIDG, TextureFormat.RGBA32, GetTextureSavePath("3Layers/2_1SameLayerIDG.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(sameLayerIDB, TextureFormat.RGBA32, GetTextureSavePath("3Layers/2_2SameLayerIDB.tga", m_TerrainAsset.m_TerrainName));
             
+            CheckSameLayerID(ref sameLayerIDG);
+            CheckSameLayerID(ref sameLayerIDB);
+            Utils.SaveRT2Texture(sameLayerIDG, TextureFormat.RGBA32, GetTextureSavePath("3Layers/3_1SameLayerIDG.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(sameLayerIDB, TextureFormat.RGBA32, GetTextureSavePath("3Layers/3_2SameLayerIDB.tga", m_TerrainAsset.m_TerrainName));
+            // 处理余下的LayerID
+            RenderTexture sameILayerIDG = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthCheckIsolateLayerID(m_TerrainAsset, sameLayerIDG, ref sameILayerIDG);
+            RenderTexture sameILayerIDB = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthCheckIsolateLayerID(m_TerrainAsset, sameLayerIDB, ref sameILayerIDB);
+            Utils.SaveRT2Texture(sameILayerIDG, TextureFormat.RGBA32, GetTextureSavePath("3Layers/4_1SameLayerIDG.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(sameILayerIDB, TextureFormat.RGBA32, GetTextureSavePath("3Layers/4_2SameLayerIDB.tga", m_TerrainAsset.m_TerrainName));
+            // 将两个sameILayerID合并
+            RenderTexture sameLayerID = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            RenderTexture idLayerEdgeG = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            RenderTexture idLayerEdgeB = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthCombineLayerID(m_TerrainAsset, sameILayerIDG, sameILayerIDB, rawIDLayerEdgeG, rawIDLayerEdgeB, ref sameLayerID, ref idLayerEdgeG, ref idLayerEdgeB);
+            Utils.SaveRT2Texture(sameLayerID, TextureFormat.RGBA32, GetTextureSavePath("3Layers/5SameLayerID.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(idLayerEdgeG, TextureFormat.RGBA32, GetTextureSavePath("3Layers/5_1IDLayerEdgeG.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(idLayerEdgeB, TextureFormat.RGBA32, GetTextureSavePath("3Layers/5_2IDLayerEdgeB.tga", m_TerrainAsset.m_TerrainName));
+            // 转移像素
+            RenderTexture rawIDResult = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            RenderTexture alphaID = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthTransformGB2A(m_TerrainAsset, rawIDTexture, sameLayerID, ref rawIDResult, ref alphaID);
+            Utils.SaveRT2Texture(rawIDResult, TextureFormat.RGBA32, GetTextureSavePath("3Layers/6RawIDTexture.tga", m_TerrainAsset.m_TerrainName));
+            Utils.SaveRT2Texture(alphaID, TextureFormat.RGBA32, GetTextureSavePath("3Layers/6AlphaID.tga", m_TerrainAsset.m_TerrainName));
+            // 输出最终Blend贴图
+            RenderTexture rawBlendResult = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+            BlendCS3LUtils.DispacthThreeLayersBlend(m_TerrainAsset, rawBlendTexture, idLayerEdgeG, idLayerEdgeB, alphaID, ref rawBlendResult);
+            Utils.SaveRT2Texture(rawBlendResult, TextureFormat.RGBA32, GetTextureSavePath("3Layers/7RawBlendResult.tga", m_TerrainAsset.m_TerrainName));
+
             rawIDMaskArrayEraseG.Release();
             rawIDMaskArrayEraseB.Release();
             rawIDMaskArrayExtendG.Release();
             rawIDMaskArrayExtendB.Release();
             rawIDLayerEdgeG.Release();
             rawIDLayerEdgeB.Release();
-            alphaMaskG.Release();
-
+            sameLayerIDG.Release();
+            sameLayerIDB.Release();
+            sameILayerIDG.Release();
+            sameILayerIDB.Release();
+            sameLayerID.Release();
+            idLayerEdgeG.Release();
+            idLayerEdgeB.Release();
+            rawIDResult.Release();
+            alphaID.Release();
+            rawBlendResult.Release();
             indexRank.Release();
             AssetDatabase.Refresh();
+        }
+        private void CheckSameLayerID(ref RenderTexture sameLayerID)
+        {
+            uint[] undisposed = new uint[1] { 0 };
+            uint prevUndisposed = 0;
+            // 循环扩散查找
+            for (int i = 0; i < 128; i++)
+            {
+                undisposed[0] = 0;
+                ComputeBuffer undisposedCount = CreateAndGetBuffer(undisposed, sizeof(uint));
+                RenderTexture sameNearLayerID = Utils.CreateRenderTexture(m_TerrainAsset.m_AlphamapResolution, RenderTextureFormat.ARGB32);
+                BlendCS3LUtils.DispacthCheckNearSameLayerID(m_TerrainAsset, undisposedCount, sameLayerID, ref sameNearLayerID);
+                sameLayerID.Release();
+                sameLayerID = sameNearLayerID;
+                undisposedCount.GetData(undisposed);
+                undisposedCount.Dispose();
+                undisposedCount.Release();
+                
+                Debug.Log(undisposed[0]);
+                if (prevUndisposed == undisposed[0]) break;
+                prevUndisposed = undisposed[0];
+            }
         }
         // public void Update3LayersBlend(RenderTexture rawIDTexture)
         // {

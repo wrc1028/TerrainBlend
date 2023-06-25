@@ -1,11 +1,16 @@
 ﻿#pragma kernel CheckSameLayerID
+#pragma kernel CheckNearSameLayerID
+#pragma kernel CheckIsolateLayerID 
+#pragma kernel CombineLayerID
+#pragma kernel TransformGB2A 
+#pragma kernel ThreeLayersBlend 
 
-static const float4 _ChannelMask[3] = 
+static const float4 _ChannelMask[4] = 
 {
-    float4(0, 1, 0, 0),  float4(0, 0, 1, 0),  float4(0, 0, 0, 1),
+    float4(1, 0, 0, 0), float4(0, 1, 0, 0),  float4(0, 0, 1, 0),  float4(0, 0, 0, 1),
 };
 #include "TerrainUtils.hlsl"
-
+RWStructuredBuffer<uint> UndisposedCount;
 bool DistinguishHierarchy(uint layersCount, float4 rawIDValue)
 {
     uint2 blendStruct = DecodeMask(rawIDValue.w);
@@ -20,24 +25,266 @@ bool DistinguishHierarchy(uint layersCount, float4 rawIDValue)
         return layersCount == 3 && normal3Layses;
     }
 }
-[numthreads(8,8,1)]
+[numthreads(8, 8, 1)]
 void CheckSameLayerID (uint3 id : SV_DispatchThreadID)
+{
+    // G: 使用的是G2B之前的三层区域, 
+    // B: 需要考虑G2B的情况
+    float4 layerEdge = _TextureInput01[id.xy];
+    float4 refLayerEdge = _TextureInput02[id.xy];
+    float4 sameIDValue = 0;
+    if (layerEdge.x > 0 && refLayerEdge.x > 0)
+    {
+        for (uint i = 0; i < 4; i++)
+        {
+            float layerIDValue = dot(_ChannelMask[i], layerEdge);
+            if (layerIDValue == 0) break;
+            for (uint j = 0; j < 4; j++)
+            {
+                float refLayerIDValue = dot(_ChannelMask[j], refLayerEdge);
+                if (refLayerIDValue == 0) break;
+                if (layerIDValue == refLayerIDValue)
+                {
+                    sameIDValue.x = layerIDValue;
+                    break;
+                }
+            }
+        }
+    }
+    if (sameIDValue.x == 0 && layerEdge.y > 0)
+        sameIDValue = layerEdge;
+    Result01[id.xy] = sameIDValue;
+}
+
+// 有三种情况
+// 1、两层之间能找到相同ID: 当前的sameIDValue
+// 2、不能找到相同ID:
+//  1) 因为对应通道的ID是一个连续的ID
+//  2) 不是一个连续的ID
+
+// 循环遍历每一个未处理的像素, 并且统计出未处理ID的个数
+[numthreads(8, 8, 1)]
+void CheckNearSameLayerID (uint3 id : SV_DispatchThreadID)
+{
+    float4 sameIDValue = _TextureInput01[id.xy];
+    if (sameIDValue.x > 0)
+    {
+        for (uint i = 0; i < 4; i++)
+        {
+            float layerIDValue = dot(_ChannelMask[i], sameIDValue);
+            if (layerIDValue == 0) break;
+            for (uint j = 0; j < 8; j++)
+            {
+                uint2 nearID = GetNearID(id.xy, j);
+                float4 nearIDValue = _TextureInput01[nearID];
+                if (nearIDValue.x == 0 || nearIDValue.y > 0) continue;
+                if (layerIDValue == nearIDValue.x)
+                {
+                    sameIDValue = 0;
+                    sameIDValue.x = layerIDValue;
+                    break;
+                }
+            }
+        }
+    }
+    // 对未被处理像素进行统计, 外部循环的时候当成跳出循环的依据
+    if (sameIDValue.y > 0) InterlockedAdd(UndisposedCount[0], 1);
+    Result01[id.xy] = sameIDValue;
+}
+
+// 对余下的像素进行处理
+[numthreads(8, 8, 1)]
+void CheckIsolateLayerID (uint3 id : SV_DispatchThreadID)
+{
+    float4 sameIDValue = _TextureInput01[id.xy];
+    float tempValue = sameIDValue.x;
+    if (sameIDValue.z > 0)
+    {
+        sameIDValue.x = sameIDValue.z;
+        sameIDValue.z = tempValue;
+    }
+    else if (sameIDValue.y > 0)
+    {
+        sameIDValue.x = sameIDValue.y;
+        sameIDValue.y = tempValue;
+    }
+    
+    Result01[id.xy] = sameIDValue;
+}
+
+[numthreads(8, 8, 1)]
+void CombineLayerID (uint3 id : SV_DispatchThreadID)
+{
+    // 合并ID
+    float4 sameIDValueG = _TextureInput01[id.xy];
+    float4 sameIDValueB = _TextureInput02[id.xy];
+    float4 layerEdgeG = _TextureInput03[id.xy];
+    float4 layerEdgeB = _TextureInput04[id.xy];
+    float4 sameIDValue = 0;
+    if (sameIDValueG.x > 0)
+    {
+        sameIDValue.x = sameIDValueG.x;
+        if (sameIDValueB.x > 0 && sameIDValueG.x != sameIDValueB.x)
+            sameIDValue.y = sameIDValueB.x;
+        // 处理G通道LayerEdge
+        if (layerEdgeG.x == sameIDValueG.x)
+            layerEdgeG.xyz = layerEdgeG.yzw;
+        else if (layerEdgeG.y == sameIDValueG.x)
+            layerEdgeG.xyz = layerEdgeG.xzw;
+        else if (layerEdgeG.z == sameIDValueG.x)
+            layerEdgeG.xyz = layerEdgeG.xyw;
+        else
+            layerEdgeG.w = 0;
+    }
+    if (sameIDValueB.x > 0)
+    {
+        sameIDValue.x = sameIDValueB.x;
+        if (sameIDValueG.x > 0 && sameIDValueG.x != sameIDValueB.x)
+            sameIDValue.y = sameIDValueG.x;
+        // 处理B通道LayerEdge
+        if (layerEdgeB.x == sameIDValueB.x)
+            layerEdgeB.xyz = layerEdgeB.yzw;
+        else if (layerEdgeB.y == sameIDValueB.x)
+            layerEdgeB.xyz = layerEdgeB.xzw;
+        else if (layerEdgeB.z == sameIDValueB.x)
+            layerEdgeB.xyz = layerEdgeB.xyw;
+        else
+            layerEdgeB.w = 0;
+    }
+    sameIDValue.z = sameIDValueG.x;
+    sameIDValue.w = sameIDValueB.x;
+    
+    Result01[id.xy] = sameIDValue;
+    Result02[id.xy] = layerEdgeG;
+    Result03[id.xy] = layerEdgeB;
+}
+
+[numthreads(8, 8, 1)]
+void TransformGB2A (uint3 id : SV_DispatchThreadID)
+{
+    float4 rawIDValue = _TextureInput01[id.xy];
+    float4 sameIDValue = _TextureInput02[id.xy];
+    float4 alphaIDResult = 0;
+    // G 通道
+    {
+        bool canTransform = false;
+        if (sameIDValue.z > 0)
+            canTransform = rawIDValue.y == sameIDValue.z;
+        else
+        {
+            for (uint i = 0; i < 8; i++)
+            {
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearSameIDValue = _TextureInput02[nearID];
+                if (nearSameIDValue.z == 0 || rawIDValue.y != nearSameIDValue.z) continue;
+                canTransform = true;
+            }
+        }
+        if (canTransform)
+        {
+            alphaIDResult.x = rawIDValue.y;
+            rawIDValue.y = Encode(Decode(rawIDValue.y), 0);
+        }
+    }
+    // B通道
+    {
+        bool canTransform = false;
+        if (sameIDValue.w > 0)
+            canTransform = rawIDValue.z == sameIDValue.w;
+        else
+        {
+            for (uint i = 0; i < 8; i++)
+            {
+                uint2 nearID = GetNearID(id.xy, i);
+                float4 nearSameIDValue = _TextureInput02[nearID];
+                if (nearSameIDValue.w == 0 || rawIDValue.z != nearSameIDValue.w) continue;
+                canTransform = true;
+            }
+        }
+        if (canTransform)
+        {
+            alphaIDResult.y = rawIDValue.z;
+            rawIDValue.z = Encode(Decode(rawIDValue.z), 0);
+        }
+    }
+    if (alphaIDResult.x > 0)
+    {
+        alphaIDResult.z = alphaIDResult.x;
+        if (alphaIDResult.y > 0 && alphaIDResult.x != alphaIDResult.y)
+            alphaIDResult.w = alphaIDResult.y;
+    }
+    if (alphaIDResult.y > 0)
+    {
+        alphaIDResult.z = alphaIDResult.y;
+        if (alphaIDResult.x > 0 && alphaIDResult.x != alphaIDResult.y)
+            alphaIDResult.w = alphaIDResult.x;
+    }
+    Result01[id.xy] = rawIDValue;
+    Result02[id.xy] = alphaIDResult;
+}
+
+[numthreads(8, 8, 1)]
+void ThreeLayersBlend (uint3 id : SV_DispatchThreadID)
+{
+    float4 rChannelBlendValue = _TextureInput01[id.xy];
+    float4 layerEdgeG = _TextureInput02[id.xy];
+    float4 layerEdgeB = _TextureInput03[id.xy];
+    float4 alphaIDValue = _TextureInput04[id.xy];
+    float4 threeAreaAlpha = 0;
+    uint3 texID = 0;
+    threeAreaAlpha.x = rChannelBlendValue.x;
+    if (layerEdgeG.x > 0)
+    {
+        texID = uint3(id.xy, Decode(layerEdgeG.x));
+        threeAreaAlpha.y = _AlphaTextureArray[texID];
+    }
+    if (layerEdgeB.x > 0)
+    {
+        texID = uint3(id.xy, Decode(layerEdgeB.x));
+        threeAreaAlpha.z = _AlphaTextureArray[texID];
+    }
+    float aChannelID = 0;
+    if (alphaIDValue.z > 0)
+        aChannelID = alphaIDValue.z;
+    else
+    {
+        for (uint i = 0; i < 8; i++)
+        {
+            uint2 nearID = GetNearID(id.xy, i);
+            float4 nearAlphaIDValue = _TextureInput04[nearID];
+            if (nearAlphaIDValue.z == 0) continue;
+                aChannelID = nearAlphaIDValue.z;
+        }
+    }
+    if (aChannelID > 0)
+    {
+        texID = uint3(id.xy, Decode(aChannelID));
+        threeAreaAlpha.w = _AlphaTextureArray[texID];
+    }
+    Result01[id.xy] = threeAreaAlpha;
+}
+
+
+
+[numthreads(8, 8, 1)]
+void CheckSameLayerID_v1 (uint3 id : SV_DispatchThreadID)
 {
     // G: 使用的是G2B之前的三层区域, 
     // B: 需要考虑G2B的情况
     float4 rawIDValue = _TextureInput01[id.xy];
     float4 layerEdge = _TextureInput02[id.xy];
+    float4 sameIDValue = 0;
     float4 alphaMask = 0;
     if (layerEdge.x > 0)
     {
         float refIDValue = _ExtendParams.y == 1 ? rawIDValue.z : rawIDValue.y;
-        for (uint i = 0; i < 3; i++)
+        for (uint i = 1; i < 4; i++)
         {
             float layerIDValue = dot(_ChannelMask[i], layerEdge);
             if (layerIDValue == 0) break;
             // 遍历当前及其周围的ID
             if (layerIDValue == refIDValue)
-                alphaMask.x = layerIDValue;
+                sameIDValue.x = layerIDValue;
             else
             {
                 for (uint j = 0; j < 8; j++)
@@ -48,15 +295,15 @@ void CheckSameLayerID (uint3 id : SV_DispatchThreadID)
                     float refNearIDValue = _ExtendParams.y == 1 ? nearRawIDValue.z : nearRawIDValue.y;
                     if (layerIDValue == refNearIDValue)
                     {
-                        alphaMask.x = layerIDValue;
+                        sameIDValue.x = layerIDValue;
                         break;
                     }
                 }
             }
         }
     }
-    if (alphaMask.x == 0 && layerEdge.y > 0)
-        alphaMask = layerEdge;
-    
-    Result01[id.xy] = alphaMask;
+    if (sameIDValue.x == 0 && layerEdge.y > 0)
+        sameIDValue = layerEdge;
+    // TODO: 输出一张AlphaMask
+    Result01[id.xy] = sameIDValue;
 }

@@ -20,7 +20,7 @@ Material:
     serializedVersion: 3
     m_TexEnvs:
     - _FxFBlendTex:
-        m_Texture: {fileID: 2800000, guid: 901cbdeb41121f548a8bf5166d867920, type: 3}
+        m_Texture: {fileID: 2800000, guid: 647b8465296151e44ba1762fe48a0df3, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFBlendTex3:
@@ -28,7 +28,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFIDTex:
-        m_Texture: {fileID: 2800000, guid: 704dd55216f00c546895fad28824cf3b, type: 3}
+        m_Texture: {fileID: 2800000, guid: 7bbc0bfc6e19e9a4688de673059722cf, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _FxFIDTex3:
@@ -41,7 +41,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Floats:
     - _DoubleLayer: 1
-    - _MaskCtrl: 1
+    - _MaskCtrl: 0
     - _SingleLayer: 1
     - _SpecialLayer: 1
     - _SpecialLayerB: 0

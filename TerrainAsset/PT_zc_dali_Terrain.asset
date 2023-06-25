@@ -1,0 +1,122 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f8ae48b3281a694ca0247fe7bd84a42, type: 3}
+  m_Name: PT_zc_dali_Terrain
+  m_EditorClassIdentifier: 
+  m_TerrainData: {fileID: 15600000, guid: 93d48abf2b34de447a7d2dadd3a5b811, type: 2}
+  m_TerrainName: PT_zc_dali_Terrain
+  m_AlphamapResolution: 1024
+  m_ThreadGroups: 128
+  m_LayersCount: 16
+  m_CoverageIndexRank: 010000000700000008000000090000000f000000000000000200000003000000040000000b0000000e0000000c0000000d000000060000000a00000005000000
+  m_OccupancyIndexRank: 0100000002000000080000000f00000003000000070000000000000009000000040000000b0000000e0000000c0000000d00000005000000060000000a000000
+  m_TerrainLayers:
+  - m_OriginAlpha: {fileID: 2800000, guid: b497458614ec27e47b25c714f3253911, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: c625e0c80347b794fbc5dc3665ba9ed2, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 92441be70ab8d414d8265dc3f2ccffce, type: 3}
+    m_Coverage: 0.11039066
+    m_Occupancy: 0.052107725
+  - m_OriginAlpha: {fileID: 2800000, guid: 048dfe2eeea784b43960728defe2113f, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: f655e0fc46bb8ea46b2ecf9bd5ccc1c9, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 75987f3f5d7071d449423242279873fd, type: 3}
+    m_Coverage: 0.668972
+    m_Occupancy: 0.45836332
+  - m_OriginAlpha: {fileID: 2800000, guid: 238b182c7ab793444957874b6e0bb843, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: 0b5ed490f84e0c2448bba525aa19729d, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 9352d217f931aa24c8f3043fb9e08286, type: 3}
+    m_Coverage: 0.1047411
+    m_Occupancy: 0.08097991
+  - m_OriginAlpha: {fileID: 2800000, guid: 04af195fc303ac84ca12f634e158e0dc, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: b8c66f0a5485cc4469cd9e2501c3f56e, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 93408ca6429ebe04cb5b54a316964cd5, type: 3}
+    m_Coverage: 0.09041023
+    m_Occupancy: 0.06343588
+  - m_OriginAlpha: {fileID: 2800000, guid: 74015faa656751d4ab7dbaa613529a5f, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: 4c2ee1147a8513f4fa8735f954924405, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 6c17892f8ea7a674c90420b916b68145, type: 3}
+    m_Coverage: 0.040254593
+    m_Occupancy: 0.031632215
+  - m_OriginAlpha: {fileID: 2800000, guid: 87c5d4bd53d8e534e9dd2e1e443dbde6, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: 4ff92933d9d2027458f55f0d17bd8c31, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 37095e2051edead419d63248331150ed, type: 3}
+    m_Coverage: 0.0035552979
+    m_Occupancy: 0.0023182614
+  - m_OriginAlpha: {fileID: 2800000, guid: 8cc3dfed4bac11c4ab48b37fb1190375, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: b3bcedbbea623d34da1d309ed5f33627, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: d910eec920fdd4e4b9cb2d6e2c5520e6, type: 3}
+    m_Coverage: 0.0054769516
+    m_Occupancy: 0.001349856
+  - m_OriginAlpha: {fileID: 2800000, guid: e9979591b21f346439e7ba8e7cb069e4, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: 8e365e294aabd7f45af5055208f6c8e1, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 4e5b8a29b59253e4ba60a8c69a373448, type: 3}
+    m_Coverage: 0.15592384
+    m_Occupancy: 0.0593066
+  - m_OriginAlpha: {fileID: 2800000, guid: acd013472da28d44597935836bed65a5, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: 755a3186edcc24b41bf26bb684c35e09, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 570e125768b78b4419696f62b3fc6be9, type: 3}
+    m_Coverage: 0.15015602
+    m_Occupancy: 0.07890321
+  - m_OriginAlpha: {fileID: 2800000, guid: 73ac7bffda5c8bb40b03d7ae00bfd31b, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: 75202235410eb6c4f9d8507cad478121, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: afd95440fb16fc14494dd01a995fcd15, type: 3}
+    m_Coverage: 0.14456558
+    m_Occupancy: 0.043189388
+  - m_OriginAlpha: {fileID: 2800000, guid: ce619ae50070ead42b23b57a5719a00e, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: ae8604b4c9a04c64babdf5e1f0221746, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 38d36f0eddabeb644bf45a05de402b1b, type: 3}
+    m_Coverage: 0.0049438477
+    m_Occupancy: 0.000638069
+  - m_OriginAlpha: {fileID: 2800000, guid: 7559507af0b687849950341a4e7c114b, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: 36d8242f21ff7314891a36484b4f821b, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: ff163ef466e74064aac04d3471d8d0f9, type: 3}
+    m_Coverage: 0.036370277
+    m_Occupancy: 0.030885603
+  - m_OriginAlpha: {fileID: 2800000, guid: cb4f3ac95a42c2041b4f41d61012711e, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: f8c77ab3d634dba48a8779cff05b5a6c, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: f3d6fa4b7cdad2b40ab4dc3c036be256, type: 3}
+    m_Coverage: 0.013035774
+    m_Occupancy: 0.0044625355
+  - m_OriginAlpha: {fileID: 2800000, guid: f9c9e9df5af01f946b2c73d0dbf0221e, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: d52b74d6565438d4d9e54262b938671c, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: d9220ae4f41d4ba419ac4d512f40c23e, type: 3}
+    m_Coverage: 0.0059394836
+    m_Occupancy: 0.003314956
+  - m_OriginAlpha: {fileID: 2800000, guid: 552fec00d33feef4b814b707ad921e24, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: a8518898b6f314f448b9e198981358af, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: 8fecdba2c096103448f6e98c6f47333f, type: 3}
+    m_Coverage: 0.014937401
+    m_Occupancy: 0.013019264
+  - m_OriginAlpha: {fileID: 2800000, guid: ab5951845cf160a4aa9f3b383a219d7e, type: 3}
+    m_AutoEraseAlpha: {fileID: 2800000, guid: 171c74e11954e0e4c8fc4a5e8258c457, type: 3}
+    m_EraseAlpha: {fileID: 0}
+    m_RawIDMask: {fileID: 2800000, guid: e9fddd14b5f5d514a95f422a5557c063, type: 3}
+    m_Coverage: 0.114733696
+    m_Occupancy: 0.07598992
+  m_RawIDMaskArray: {fileID: 18700000, guid: 5955b36503f372f47b0a485d0f5a8810, type: 2}
+  m_OriginAlphaArray: {fileID: 18700000, guid: 0faba4d0274ce8d4db5584dac20dd710, type: 2}
+  m_AlphaTextureArray: {fileID: 18700000, guid: 3faad720c3212a84dab314ae5332114b,
+    type: 2}
