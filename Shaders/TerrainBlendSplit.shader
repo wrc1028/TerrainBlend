@@ -1,4 +1,4 @@
-﻿Shader "Unlit/PrevBlend"
+﻿Shader "Unlit/TerrainBlendSplit"
 {
     Properties
     {

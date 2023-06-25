@@ -1,4 +1,4 @@
-﻿Shader "Unlit/TerrainBlend"
+﻿Shader "Unlit/TerrainBlendCombine"
 {
     Properties
     {
